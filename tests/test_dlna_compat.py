@@ -27,7 +27,7 @@ never-fetch.m3u8
 class ChoiceTests(unittest.TestCase):
     def test_video_download_rejects_live_and_drm_playlists(self):
         live = '#EXTM3U\n#EXTINF:2,\nsegment.ts\n'
-        with self.assertRaisesRegex(ValueError, 'direct'):
+        with self.assertRaisesRegex(ValueError, 'live'):
             check_playlist(live)
         with self.assertRaisesRegex(ValueError, 'protection'):
             check_playlist(live + '#EXT-X-KEY:METHOD=SAMPLE-AES,KEYFORMAT="com.apple.streamingkeydelivery"\n#EXT-X-ENDLIST\n')

@@ -60,7 +60,7 @@ class SubDLTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError) as err:await self.p.request(client,{'film_name':'film'})
         self.assertNotIn('private-key',str(err.exception))
         client.get.side_effect=None;client.get.return_value=Response(status=429)
-        with self.assertRaisesRegex(ValueError,'Quota'):await self.p.request(client,{'film_name':'film'})
+        with self.assertRaisesRegex(ValueError,'quota'):await self.p.request(client,{'film_name':'film'})
 
     async def test_download_only_known_results_and_cache_without_key_to_files(self):
         with self.assertRaises(ValueError):await self.p.download(None,'missing')

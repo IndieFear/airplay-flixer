@@ -47,9 +47,9 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
     async def test_quota_has_clear_error_and_cross_host_redirect_cannot_leak_key(self):
         self.p.config={'key':'private-key','token':'private-token'}
         client=MagicMock();client.request.return_value=Response(status=406)
-        with self.assertRaisesRegex(ValueError,'Quota'):await self.p.request(client,'POST','download',body={'file_id':12})
+        with self.assertRaisesRegex(ValueError,'quota'):await self.p.request(client,'POST','download',body={'file_id':12})
         client.request.return_value=Response(status=302,headers={'Location':'https://elsewhere.test/steal'})
-        with self.assertRaisesRegex(ValueError,'Redirection'):await self.p.request(client,'GET','subtitles')
+        with self.assertRaisesRegex(ValueError,'redirect'):await self.p.request(client,'GET','subtitles')
         self.assertEqual(client.request.call_count,2)
 
     async def test_download_requires_result_and_reuses_cached_file_without_quota(self):

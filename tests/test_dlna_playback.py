@@ -109,7 +109,7 @@ class PlaybackTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['casting'])
         self.assertEqual(result['selectedProtocol'],'dlna')
         self.assertIsNone(self.c.atv)
-        self.assertIn('sous-titres externes',result['playbackWarning'])
+        self.assertIn('external subtitles',result['playbackWarning'])
         self.assertTrue(self.c.confirmed)
         async with self.client.get(self.uri) as response:
             self.assertEqual(await response.read(),b'test-video')
@@ -150,7 +150,7 @@ class PlaybackTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['compatibleMode'])
         self.assertFalse(result['seekable'])
         self.assertEqual(self.c.media.compat_offset,120)
-        self.assertIn('Mode compatible DLNA',result['playbackWarning'])
+        self.assertIn('DLNA compatibility mode',result['playbackWarning'])
         loads=[v['CurrentURI'] for a,v in self.calls if a=='SetAVTransportURI']
         self.assertEqual(len(loads),2)
         self.assertTrue(loads[-1].endswith('/compatible.ts'))
