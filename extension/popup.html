@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Airplay Flixer</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <svg class="symbols" aria-hidden="true"><defs>
+    <symbol id="airplay" viewBox="0 0 24 24"><path d="M5 16H3V4h18v12h-2M12 13l-6 8h12z"/></symbol>
+    <symbol id="refresh-icon" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 11.5-1L20 9M4 15l2.5 3A7 7 0 0 0 18 17"/></symbol>
+    <symbol id="play-icon" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7z"/></symbol>
+    <symbol id="pause-icon" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="stop-icon" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="back-icon" viewBox="0 0 24 24"><path d="M4 9V3m0 6h6M4 9a9 9 0 1 1-1 6"/></symbol>
+    <symbol id="forward-icon" viewBox="0 0 24 24"><path d="M20 9V3m0 6h-6m6 0a9 9 0 1 0 1 6"/></symbol>
+    <symbol id="chevron-icon" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="search-icon" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></symbol>
+    <symbol id="settings-icon" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></symbol>
+    <symbol id="download-icon" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+  </defs></svg>
+  <header><span class="brand-icon"><svg><use href="#airplay"/></svg></span><h1>Airplay <span>Flixer</span></h1><button id="refresh" class="icon-button" title="Actualiser" aria-label="Actualiser"><svg><use href="#refresh-icon"/></svg></button></header>
+  <nav class="tabs" role="tablist" aria-label="Navigation">
+    <button id="tab-player" role="tab" aria-selected="true" aria-controls="panel-player" tabindex="0"><svg><use href="#airplay"/></svg>Lecture</button>
+    <button id="tab-subtitles" role="tab" aria-selected="false" aria-controls="panel-subtitles" tabindex="-1">Sous-titres<span id="subtitle-count" class="tab-count" hidden></span></button>
+    <button id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1"><svg><use href="#settings-icon"/></svg>Paramètres</button>
+  </nav>
+  <main>
+    <button id="destination" class="destination" type="button" aria-label="Choisir la destination de diffusion"><span class="destination-icon"><svg><use href="#airplay"/></svg></span><span class="destination-copy"><strong id="room">Choisir un appareil</strong><span id="connection" role="status"><span class="dot"></span><span id="connection-label">Connexion…</span></span></span><span class="destination-change">Changer <svg><use href="#chevron-icon"/></svg></span></button>
+    <p class="hint" id="playback-warning" role="status" hidden></p>
+    <p id="error" role="alert" hidden></p>
+    <div id="panel-player" role="tabpanel" aria-labelledby="tab-player">
+    <section class="player" aria-label="Lecteur de diffusion">
+      <div class="player-heading"><span class="eyebrow" id="player-label">PRÊT POUR LE GRAND ÉCRAN</span><span class="screen-badge"><svg><use href="#airplay"/></svg></span></div>
+      <h2 id="title">Recherche d’une vidéo…</h2>
+      <p class="source-caption" id="source-caption">Depuis l’onglet ouvert</p>
+      <div id="controls" hidden>
+        <p class="hint stream-stats" id="stream-stats" aria-live="off"></p>
+        <div class="timeline-wrap"><input id="timeline" type="range" min="0" max="1" value="0" step="1" aria-label="Position dans le film" disabled></div>
+        <div class="time-row"><span id="position">0:00</span><span id="seek-preview" aria-live="polite"></span><span id="duration">0:00</span></div>
+        <div class="transport"><button id="backward" class="skip-button" aria-label="Reculer de 10 secondes" title="Reculer de 10 secondes"><svg><use href="#back-icon"/></svg><span>10</span></button><button id="toggle" class="play-button" aria-label="Mettre en pause" title="Lecture / Pause"><svg id="pause-glyph"><use href="#pause-icon"/></svg><svg id="play-glyph" hidden><use href="#play-icon"/></svg></button><button id="forward" class="skip-button" aria-label="Avancer de 10 secondes" title="Avancer de 10 secondes"><svg><use href="#forward-icon"/></svg><span>10</span></button></div>
+        <div class="playing-footer"><span id="playing-status">Lecture sur l’Apple TV</span></div>
+      </div>
+      <button id="stop" class="stop-button" hidden><svg><use href="#stop-icon"/></svg>Arrêter la diffusion</button>
+      <p class="empty hint" id="empty" hidden>Lance une vidéo dans cet onglet pour la retrouver ici.</p>
+      
+    </section>
+    <section class="media-options" aria-label="Options vidéo">
+      <div class="section-heading"><h3>Vidéo</h3><span id="source-count" class="count"></span></div>
+      <div id="source-field"><label for="source">Qualité et source</label><select id="source" aria-describedby="source-hint"><option value="">Aucun flux détecté</option></select><details class="source-details"><summary>Détails du flux</summary><p class="hint" id="source-hint"></p></details></div>
+      </section>
+      <div class="cast-area"><button id="cast" class="primary" disabled><span>Caster sur l’appareil</span><svg><use href="#chevron-icon"/></svg></button><button id="subtitle-shortcut" class="subtitle-shortcut" type="button"><span>Sous-titres</span><span id="subtitle-summary">Automatique</span><svg><use href="#chevron-icon"/></svg></button><p class="hint" id="cast-hint" role="status"></p></div>
+      <div class="video-download">
+        <button id="download-video" class="secondary" type="button" aria-describedby="download-status" hidden disabled><svg><use href="#download-icon"/></svg><span>Télécharger la vidéo</span></button>
+        <p id="download-status" class="hint" role="status" hidden></p>
+        <button id="download-cancel" class="text-button" type="button" hidden>Annuler le téléchargement</button>
+      </div>
+    </div>
+    <div id="panel-subtitles" role="tabpanel" aria-labelledby="tab-subtitles" hidden>
+      <div class="page-heading"><h2>Sous-titres</h2><p>Choisis une langue ou ajuste le décalage.</p></div>
+      <section class="settings-card subtitle-options"><div class="section-heading"><h3>Langue et pistes</h3><span class="next-play">Au prochain lancement</span></div>
+      <label for="subtitle-language">Langue</label><select id="subtitle-language"><option value="auto">Automatique · français ou piste active</option><option value="off">Désactivés</option></select>
+      <div id="subtitle-track-field" hidden><label for="subtitle">Piste au démarrage</label><select id="subtitle"></select></div>
+      <p class="hint" id="subtitle-hint"></p>
+      </section><section id="subtitle-sync" class="sync-card" aria-label="Recaler les sous-titres" hidden>
+        <div class="section-heading"><h3>Synchronisation</h3><span class="count" id="sync-context">Pendant la lecture</span></div>
+        <div id="sync-track-field"><label for="sync-track">Piste à recaler</label><select id="sync-track"></select></div>
+        <button id="sync-auto" class="secondary auto-button" type="button">Synchroniser automatiquement</button>
+        <div id="auto-progress" hidden><p class="hint" id="auto-message" role="status"></p><button id="auto-cancel" class="text-button" type="button">Annuler l’analyse</button><button id="auto-use" class="small" type="button" hidden>Utiliser ce décalage</button></div>
+        <details id="manual-sync" class="manual-sync"><summary>Ajuster manuellement<span class="count" id="offset-summary">0 s</span></summary><div class="manual-content"><div class="section-heading"><label for="sync-offset">Décalage en secondes</label><button id="sync-reset" class="text-button" type="button">Réinitialiser</button></div>
+        <input id="sync-offset" type="number" value="0" min="-600" max="600" step="0.1" inputmode="decimal" aria-describedby="sync-meaning">
+        <div class="sync-steps"><button id="sync-earlier" class="small" type="button">−0,5 s · Plus tôt</button><button id="sync-later" class="small" type="button">+0,5 s · Plus tard</button></div>
+        <p class="hint" id="sync-meaning" aria-live="polite">Aucun décalage.</p></div></details>
+        <button id="sync-apply" class="secondary" type="button">Appliquer à la lecture</button>
+        <p class="hint" id="sync-hint"></p>
+      </section>
+      <section class="settings-card" id="os-search-card" aria-label="Rechercher des sous-titres">
+        <div class="section-heading"><h3>Trouver une autre piste</h3><span id="provider-name" class="count">OpenSubtitles</span></div>
+        <label for="subtitle-provider">Catalogue</label><select id="subtitle-provider"><option value="opensubtitles">OpenSubtitles</option><option value="subdl">SubDL</option></select>
+        <p class="hint">Recherche une version WEB-DL, BluRay… correspondant à ta vidéo.</p>
+        <button id="os-setup" class="secondary" type="button">Configurer OpenSubtitles</button>
+        <form id="os-search-form" hidden>
+          <label for="os-query">Film, série ou identifiant IMDb</label><input id="os-query" type="search" maxlength="200" placeholder="Titre du film ou de la série" required minlength="2">
+          <div class="os-grid"><div><label for="os-type">Contenu</label><select id="os-type"><option value="movie">Film</option><option value="episode">Épisode</option></select></div><div><label for="os-language">Langue</label><select id="os-language"><option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option><option value="de">Allemand</option><option value="it">Italien</option><option value="pt">Portugais</option><option value="pt-br">Portugais (Brésil)</option><option value="nl">Néerlandais</option><option value="ar">Arabe</option><option value="ja">Japonais</option><option value="ko">Coréen</option><option value="zh">Chinois</option><option value="ru">Russe</option></select></div></div>
+          <div id="os-episode-fields" class="os-grid" hidden><div><label for="os-season">Saison</label><input id="os-season" type="number" min="0" max="999" value="1"></div><div><label for="os-episode">Épisode</label><input id="os-episode" type="number" min="1" max="999" value="1"></div></div>
+          <button id="os-search" class="secondary" type="submit">Rechercher sur OpenSubtitles</button>
+        </form>
+        <p id="os-message" class="hint" role="status"></p>        <div id="os-chosen" hidden><p id="os-chosen-label" class="hint"></p><button id="os-apply" class="secondary" type="button" hidden>Ajouter à la lecture · courte coupure</button><p id="os-chosen-hint" class="hint"></p></div>
+        <div id="os-results" aria-label="Résultats OpenSubtitles"></div>
+        <button id="os-more" class="text-button" type="button" hidden>Page suivante</button>
+
+      </section>
+      <p id="sync-unavailable" class="hint empty-sync" hidden>Les outils de synchronisation apparaîtront ici pendant une diffusion avec des sous-titres externes.</p>
+    </div>
+    <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <div class="page-heading"><h2>Paramètres</h2><p>Ton appareil et sa connexion.</p></div>
+      <section class="settings-card">
+        <div class="section-heading"><h3>Appareil par défaut</h3><span id="device-saved" class="count">Sur ce Mac</span></div>
+        <label for="device">Destination</label><select id="device"><option value="">Choisir une Apple TV</option></select>
+        <p class="hint" id="device-hint">Cette destination sera utilisée pour tes prochaines diffusions.</p>
+        <button id="save-device" class="primary"><span>Utiliser par défaut</span><svg><use href="#chevron-icon"/></svg></button>
+        <button id="scan" class="secondary"><svg><use href="#search-icon"/></svg><span>Rechercher des appareils</span></button>
+        <p class="hint" id="discovery-hint"></p>
+      </section>
+      <section class="settings-card pairing-card" id="pairing-card"><div class="section-heading"><h3>Connexion Apple TV</h3><span class="count" id="pair-status">AirPlay</span></div>
+        <p class="hint" id="pair-description">Sélectionne une Apple TV pour consulter son association.</p><button id="pair" class="text-button">Associer cette Apple TV</button>
+        <form id="pair-form" hidden><label for="pin">Code affiché sur la télévision</label><div class="row"><input id="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" autocomplete="one-time-code" required><button class="small" type="submit">Associer</button><button class="icon-button" id="cancel-pair" type="button" title="Annuler" aria-label="Annuler l’appairage">×</button></div></form>
+        <button id="forget" class="forget-button" hidden>Oublier cette Apple TV…</button>
+        <div id="forget-confirm" class="forget-confirm" hidden><p id="forget-description"></p><div class="row"><button id="confirm-forget" class="small danger">Oublier l’association</button><button id="cancel-forget" class="small" type="button">Annuler</button></div></div>
+      </section>
+      <section class="settings-card" id="os-account-card">
+        <div class="section-heading"><h3>OpenSubtitles</h3><span id="os-status" class="count">Non configuré</span></div>
+        <p class="hint">Ta clé reste sur ce Mac. Le compte est facultatif ; les téléchargements utilisent le quota OpenSubtitles.</p>
+        <a class="os-link" href="https://www.opensubtitles.com/consumers" target="_blank" rel="noopener noreferrer">Obtenir une clé API sur OpenSubtitles ↗</a>
+        <form id="os-config-form">
+          <label for="os-key">Clé API</label><input id="os-key" type="password" autocomplete="off" maxlength="512" placeholder="Colle ta clé API">
+          <details class="manual-sync"><summary>Connecter mon compte (facultatif)</summary><label for="os-username">Nom de compte</label><input id="os-username" autocomplete="username" maxlength="200"><label for="os-password">Mot de passe</label><input id="os-password" type="password" autocomplete="off" maxlength="1024"><p class="hint">Le mot de passe sert uniquement à la connexion et n’est pas enregistré.</p></details>
+          <button id="os-save" class="secondary" type="submit">Enregistrer / connecter</button>
+        </form>
+        <button id="os-clear" class="text-button" type="button" hidden>Retirer la clé et la connexion</button><p id="os-config-message" class="hint" role="status"></p>
+      </section>
+      <section class="settings-card" id="sd-account-card">
+        <div class="section-heading"><h3>SubDL</h3><span id="sd-status" class="count">Non configuré</span></div>
+        <p class="hint">Utilise ta clé API SubDL. Elle reste enregistrée sur ce Mac.</p>
+        <a class="os-link" href="https://subdl.com/panel/api" target="_blank" rel="noopener noreferrer">Obtenir une clé API SubDL ↗</a>
+        <form id="sd-config-form"><label for="sd-key">Clé API SubDL</label><input id="sd-key" type="password" maxlength="512" autocomplete="off" placeholder="Colle ta clé API SubDL"><button id="sd-save" class="secondary" type="submit">Enregistrer SubDL</button></form>
+        <button id="sd-clear" class="text-button" type="button" hidden>Retirer la clé SubDL</button><p id="sd-config-message" class="hint" role="status"></p>
+      </section>
+    </section>
+  </main>
+  <footer><span class="local-dot"></span>Diffusion locale depuis ton Mac<span class="shortcut">⌥ ⇧ A</span></footer>
+  <script type="module" src="popup.js"></script>
+</body></html>

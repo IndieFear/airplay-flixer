@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installer Airplay Flixer</title>
+<style>
+:root{color-scheme:dark;--paper:#121824;--line:#343f53;--gold:#f3c47d;--muted:#bdc7d8}
+*{box-sizing:border-box}
+body{margin:0;background:#0a0e16;color:#f4f6fa;font:16px/1.6 system-ui,sans-serif}
+main{width:min(100% - 32px,680px);margin:clamp(24px,8vw,90px) auto}
+header{display:flex;align-items:center;gap:18px;padding:20px 0 28px;border-bottom:1px solid var(--line)}
+header img{width:84px;height:84px}
+h1,h2,p{margin:0}
+h1{font-size:clamp(26px,5vw,44px);letter-spacing:-.04em;line-height:1.05}
+h2{font-size:19px;letter-spacing:-.01em}
+.eyebrow{color:var(--gold);font-size:12px;font-weight:700;letter-spacing:.13em;text-transform:uppercase}
+header p:last-child,section p,footer{color:var(--muted)}
+section{border:1px solid var(--line);border-radius:16px;background:var(--paper);padding:20px;margin:16px 0}
+.step{display:grid;grid-template-columns:34px 1fr;gap:14px}
+.step span{align-self:start;border-radius:8px;text-align:center;background:#352b20;color:var(--gold);font-weight:700;padding:3px}
+section p{margin-top:7px}
+a{color:var(--gold)}
+a:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
+code{color:#fff;background:#272f41;border-radius:4px;padding:2px 4px;overflow-wrap:anywhere}
+footer{font-size:13px;margin:24px 0}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <img src="Chrome%20Extension/icons/app.svg" alt="">
+  <div><p class="eyebrow">Guide d’installation · @VERSION@</p><h1>Airplay Flixer</h1><p>Mac @CHIP@ · macOS @MACOS@ ou ultérieur · Google Chrome</p></div>
+</header>
+<section class="step">
+  <span aria-hidden="true">1</span>
+  <div><h2>Ouvre le compagnon Mac</h2><p>Glisse <strong>Airplay Flixer.app</strong> dans <strong>Applications</strong>, puis ouvre-le depuis ce dossier. Son icône apparaît dans la barre de menus. Si macOS te le demande, autorise l’accès au réseau local.</p><p>Cette version est signée localement, sans notarisation Apple. Si macOS demande une confirmation, suis les étapes d’Apple pour cette app uniquement si tu fais confiance à la personne qui te l’a envoyée. <a href="https://support.apple.com/fr-fr/102445">Consulter l’aide Apple</a>.</p></div>
+</section>
+<section class="step">
+  <span aria-hidden="true">2</span>
+  <div><h2>Charge l’extension dans Chrome</h2><p>Déplace le dossier <strong>Chrome Extension</strong> dans un emplacement où tu veux le garder. Dans <code>chrome://extensions</code>, active <strong>Mode développeur</strong>, clique sur <strong>Charger l’extension non empaquetée</strong>, puis sélectionne ce dossier. Épingle Airplay Flixer dans la barre d’outils.</p></div>
+</section>
+<section class="step">
+  <span aria-hidden="true">3</span>
+  <div><h2>Choisis ton Apple TV</h2><p>Dans l’extension, ouvre <strong>Paramètres</strong>, recherche les appareils et enregistre ton Apple TV comme destination par défaut. Pour la première connexion, clique sur <strong>Associer cette Apple TV</strong> et saisis le code affiché sur la TV. Recharge ensuite la page vidéo, lance la lecture et ouvre l’extension pour diffuser.</p></div>
+</section>
+<section>
+  <h2>Pour les fonctions vidéo avancées</h2>
+  <p>Le téléchargement des flux HLS, la synchronisation des sous-titres et certains formats vidéo nécessitent FFmpeg. Si tu utilises Homebrew, installe-le avec <code>brew install ffmpeg</code>.</p>
+</section>
+<footer>Le Mac et l’Apple TV doivent être sur le même réseau local. Tes réglages et appairages sont créés sur ton Mac au premier lancement.</footer>
+</main>
+</body>
+</html>
