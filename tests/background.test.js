@@ -10,7 +10,7 @@ globalThis.chrome = {
   storage: {session: {get: async () => ({}), set: async () => {}, remove: async () => {}}},
   webRequest: {onBeforeRequest: beforeRequest, onHeadersReceived: responseHeaders, onSendHeaders: requestHeaders, onErrorOccurred: requestErrors},
   tabs: {onRemoved: event(), query: async () => [{id: 12}]},
-  scripting: {executeScript: async () => [{frameId: 0, result: {title: "Mon épisode", videos: [{index: 0, src: "blob:https://page.example/id", sources: [], position: 137, duration: 3000, playing: true, area: 1920 * 1080, tracks: [{url: "https://subs.example/fr.srt", label: "Français", language: "fr", selected: true}]}]}}]},
+  scripting: {executeScript: async () => [{frameId: 0, result: {title: "Mon épisode", videos: [{index: 0, src: "blob:https://page.example/id", sources: [], position: 137, duration: 3000, playing: true, area: 1920 * 1080, tracks: [{url: "https://subs.example/fr.srt", label: "French", language: "fr", selected: true}]}]}}]},
   runtime: {id: extensionId, getURL: path => `chrome-extension://${extensionId}/${path}`, onMessage, sendNativeMessage: (_host, message, cb) => {
     nativeCalls.push(message);
     cb({ok: true, result: {casting: message.action === "cast", confirmed: false, devices: []}});
@@ -81,8 +81,8 @@ test('inspection prioritizes a complete master over newer silent variants and ca
   const response = await message({action:'inspect',tabId:99});
   assert.equal(response.ok,true);
   assert.equal(response.result.sources[0].info.role,'master');
-  assert.match(response.result.sources.find(s => s.url.endsWith('/video.m3u8')).label,/vidéo seule/);
-  assert.match(response.result.sources.at(-1).label,/audio seul/);
+  assert.match(response.result.sources.find(s => s.url.endsWith('/video.m3u8')).label,/video only/);
+  assert.match(response.result.sources.at(-1).label,/audio only/);
   await message({action:'inspect',tabId:99});
   assert.equal(reads,3);
 });
@@ -98,7 +98,7 @@ test('toolbar becomes ready per tab, ignores subtitles and resets on navigation 
   request(301,'https://cdn.example/master.m3u8','video');
   assert.equal(iconCalls.at(-1).tabId,301);
   assert.match(iconCalls.at(-1).path[32],/ready-32/);
-  assert.match(titleCalls.at(-1).title,/Flux vidéo détecté/);
+  assert.match(titleCalls.at(-1).title,/Video stream found/);
   responseHeaders.listeners[0]({tabId:301,url:'https://cdn.example/master.m3u8',requestId:'video',statusCode:403});
   assert.match(iconCalls.at(-1).path[32],/idle-32/);
   request(301,'https://cdn.example/movie.mp4','mp4');

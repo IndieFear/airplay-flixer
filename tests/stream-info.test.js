@@ -4,7 +4,7 @@ import {parseManifest, describeStream, metadataRank, fetchManifest} from '../ext
 const url = 'https://cdn.example/path/master.m3u8?secret=hidden';
 test('master identifies qualities, quoted codecs and separate audio without claiming child has audio', () => {
   const parsed = parseManifest(`#EXTM3U
-#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="Français",LANGUAGE="fr",URI="sound.m3u8"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="French",LANGUAGE="fr",URI="sound.m3u8"
 #EXT-X-STREAM-INF:BANDWIDTH=4500000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2",AUDIO="a",FRAME-RATE=25
 high.m3u8
 #EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2",AUDIO="a"
@@ -17,9 +17,9 @@ low.m3u8`, url);
   assert.equal(child.audio, false);
   assert.equal(child.externalAudio, true);
   assert.equal(child.codecs.length, 2);
-  assert.match(describeStream({kind:'hls',info:child}).details, /Son séparé/);
+  assert.match(describeStream({kind:'hls',info:child}).details, /Separate audio/);
   assert.ok(metadataRank(parsed.info) > metadataRank(child));
-  assert.match(describeStream({kind:'hls',info:parsed.info}).label, /Auto.*1080p.*image \+ son/);
+  assert.match(describeStream({kind:'hls',info:parsed.info}).label, /Auto.*1080p.*video \+ audio/);
   assert.equal(parsed.children.at(-1).role, 'audio');
 });
 test('muxed audio and URI-less audio rendition stay playable', () => {
@@ -31,7 +31,7 @@ test('muxed audio and URI-less audio rendition stay playable', () => {
 test('media playlists and missing declarations remain unknown; codec-declared video alone is explicit', () => {
   const media = parseManifest('#EXTM3U\n#EXTINF:6,\nsegment.ts',url);
   assert.equal(media.info.audio,null);
-  assert.match(describeStream({kind:'hls',info:media.info}).label,/son à vérifier/);
+  assert.match(describeStream({kind:'hls',info:media.info}).label,/audio unconfirmed/);
   assert.equal(parseManifest('not a playlist',url),null);
   const video = parseManifest('#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080,CODECS="avc1.640028"\nv.m3u8',url);
   assert.equal(video.children[0].audio,false);

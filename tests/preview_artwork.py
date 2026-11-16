@@ -4,7 +4,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 worker = '''import {fetchArtwork} from '/artwork.js';
 onmessage=async()=>{const data=await fetchArtwork([location.origin+'/image.png']);postMessage(data);};'''
-html = '''<!doctype html><html lang="fr"><meta charset="utf-8"><title>Test affiche</title><button id="test">Tester la conversion JPEG</button><output id="result">En attente</output><script type="module">
+html = '''<!doctype html><html lang="en"><meta charset="utf-8"><title>Test affiche</title><button id="test">Tester la conversion JPEG</button><output id="result">En attente</output><script type="module">
 import {fetchArtwork} from '/artwork.js';
 document.querySelector('#test').onclick=async()=>{
  const worker=new Worker('/worker.js',{type:'module'});

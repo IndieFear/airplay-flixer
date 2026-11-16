@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func rpc(_ command: [String: Any], completion: @escaping (Result<[String: Any], Error>) -> Void) {
         do {
             let runtime = try JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("runtime.json"))) as? [String: Any]
-            guard let port = runtime?["port"] as? Int, let token = runtime?["token"] as? String, (1024...65535).contains(port) else { throw NSError(domain: "Flixer", code: 1, userInfo: [NSLocalizedDescriptionKey: "Le compagnon démarre… Réessaie dans un instant."]) }
+            guard let port = runtime?["port"] as? Int, let token = runtime?["token"] as? String, (1024...65535).contains(port) else { throw NSError(domain: "Flixer", code: 1, userInfo: [NSLocalizedDescriptionKey: "The companion is starting… Try again shortly."]) }
             var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/rpc")!)
             request.httpMethod = "POST"
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -90,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 do {
                     if let error { throw error }
                     guard let data, let response = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw URLError(.badServerResponse) }
-                    guard response["ok"] as? Bool == true else { throw NSError(domain: "Flixer", code: 2, userInfo: [NSLocalizedDescriptionKey: response["error"] as? String ?? "Connexion impossible."]) }
+                    guard response["ok"] as? Bool == true else { throw NSError(domain: "Flixer", code: 2, userInfo: [NSLocalizedDescriptionKey: response["error"] as? String ?? "Cannot connect."]) }
                     result = .success(response["result"] as? [String: Any] ?? [:])
                 } catch { result = .failure(error) }
                 DispatchQueue.main.async { completion(result) }
@@ -109,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.item.button?.toolTip = value["message"] as? String ?? "Airplay Flixer"
                 self.rebuildMenu()
             } else if self.engine?.isRunning == false {
-                self.state["message"] = "Compagnon arrêté — relance l’application"
+                self.state["message"] = "Companion stopped. Reopen the app."
                 self.rebuildMenu()
             }
         }
@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let heading = menuItem("Airplay Flixer")
         heading.isEnabled = false
         menu.addItem(heading)
-        let status = menuItem(busy ? "Connexion en cours…" : state["message"] as? String ?? "Démarrage…")
+        let status = menuItem(busy ? "Connecting…" : state["message"] as? String ?? "Starting…")
         status.isEnabled = false
         menu.addItem(status)
         if let error = state["error"] as? String, !error.isEmpty {
@@ -138,11 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(line)
         }
         menu.addItem(.separator())
-        menu.addItem(menuItem("Mini contrôleur…", #selector(showPlayback)))
-        let devices = menuItem(state["selectedName"] as? String ?? "Choisir une Apple TV")
+        menu.addItem(menuItem("Mini controller…", #selector(showPlayback)))
+        let devices = menuItem(state["selectedName"] as? String ?? "Choose an Apple TV")
         let submenu = NSMenu()
         for device in state["devices"] as? [[String: Any]] ?? [] {
-            let name = device["name"] as? String ?? "Appareil"
+            let name = device["name"] as? String ?? "Device"
             let dlna = device["protocol"] as? String == "dlna"
             let entry = menuItem(name + (dlna ? " · DLNA" : " · AirPlay"), #selector(selectDevice(_:)))
             entry.isEnabled = !busy
@@ -151,22 +151,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             submenu.addItem(entry)
         }
         submenu.addItem(.separator())
-        submenu.addItem(menuItem("Rechercher AirPlay et DLNA…", #selector(scan)))
+        submenu.addItem(menuItem("Search AirPlay and DLNA…", #selector(scan)))
         devices.submenu = submenu
         menu.addItem(devices)
-        let pair = menuItem("Associer l’Apple TV…", #selector(pairTV))
+        let pair = menuItem("Pair Apple TV…", #selector(pairTV))
         pair.isEnabled = !busy && state["selectedProtocol"] as? String != "dlna"
         menu.addItem(pair)
         if state["casting"] as? Bool == true {
             menu.addItem(.separator())
-            menu.addItem(menuItem("Lecture / Pause", #selector(toggle)))
-            menu.addItem(menuItem("Arrêter la diffusion", #selector(stop)))
+            menu.addItem(menuItem("Play / Pause", #selector(toggle)))
+            menu.addItem(menuItem("Stop casting", #selector(stop)))
         }
         menu.addItem(.separator())
-        menu.addItem(menuItem("Installer l’extension Chrome…", #selector(showExtension)))
-        menu.addItem(menuItem("Voir le journal", #selector(showLog)))
+        menu.addItem(menuItem("Install Chrome extension…", #selector(showExtension)))
+        menu.addItem(menuItem("View log", #selector(showLog)))
         menu.addItem(.separator())
-        let quit = menuItem("Quitter Airplay Flixer", #selector(quitApp))
+        let quit = menuItem("Quit Airplay Flixer", #selector(quitApp))
         quit.keyEquivalent = "q"
         menu.addItem(quit)
         item.menu = menu
@@ -207,13 +207,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard result["pinRequired"] as? Bool == true else { return }
             NSApp.activate(ignoringOtherApps: true)
             let dialog = NSAlert()
-            dialog.messageText = "Associer l’Apple TV"
-            dialog.informativeText = "Entre le code à 4 chiffres affiché sur la télévision. Cette étape ne sera nécessaire qu’une fois."
+            dialog.messageText = "Pair Apple TV"
+            dialog.informativeText = "Enter the 4-digit code displayed on the TV. You only need to do this once."
             let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 230, height: 28))
-            field.placeholderString = "Code Apple TV"
+            field.placeholderString = "Apple TV code"
             dialog.accessoryView = field
-            dialog.addButton(withTitle: "Associer")
-            dialog.addButton(withTitle: "Annuler")
+            dialog.addButton(withTitle: "Pair")
+            dialog.addButton(withTitle: "Cancel")
             dialog.window.initialFirstResponder = field
             if dialog.runModal() == .alertFirstButtonReturn {
                 self.perform(["action": "pair_finish", "pin": field.stringValue.trimmingCharacters(in: .whitespaces)])
@@ -240,10 +240,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let extensionFolder = Bundle.main.resourceURL!.appendingPathComponent("extension")
         NSWorkspace.shared.activateFileViewerSelecting([extensionFolder])
         let dialog = NSAlert()
-        dialog.messageText = "Installer l’extension Chrome"
-        dialog.informativeText = "Dans Chrome, ouvre chrome://extensions, active le Mode développeur, puis clique sur Charger l’extension non empaquetée. Choisis le dossier extension qui vient de s’ouvrir dans le Finder. Épingle ensuite Airplay Flixer dans Chrome."
-        dialog.addButton(withTitle: "Ouvrir Chrome")
-        dialog.addButton(withTitle: "Fermer")
+        dialog.messageText = "Install Chrome extension"
+        dialog.informativeText = "In Chrome, open chrome://extensions, enable Developer mode, and click Load unpacked. Select the extension folder revealed in Finder, then pin Airplay Flixer in Chrome."
+        dialog.addButton(withTitle: "Open Chrome")
+        dialog.addButton(withTitle: "Close")
         NSApp.activate(ignoringOtherApps: true)
         if dialog.runModal() == .alertFirstButtonReturn {
             let process = Process()

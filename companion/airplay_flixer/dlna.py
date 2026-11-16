@@ -70,7 +70,7 @@ def parse_description(data, location, address):
                 connection = {'serviceType': kind, 'controlURL': endpoint}
         udn = value('UDN') or location
         devices.append({'id': 'dlna:' + hashlib.sha256(udn.encode()).hexdigest()[:24],
-                        'name': value('friendlyName') or 'Appareil DLNA',
+                        'name': value('friendlyName') or 'Device DLNA',
                         'address': address, 'manufacturer': value('manufacturer'),
                         'model': value('modelName'), 'protocol': 'dlna',
                         'paired': False, 'pairingRequired': False, 'canCast': True,
@@ -175,13 +175,13 @@ class DlnaError(ValueError):
     def __init__(self, action, code=None):
         self.code = code
         if code in {'714', '704'}:
-            message = 'La TV refuse ce format vidéo DLNA. Essaie une source MP4 ; la prise en charge HLS dépend du téléviseur.'
+            message = 'The TV rejected this DLNA video format. Try an MP4 source. HLS support depends on the TV.'
         elif code in {'710', '711'}:
-            message = 'Le déplacement dans cette vidéo n’est pas pris en charge par la TV.'
+            message = 'This TV does not support seeking in this video.'
         elif code == '701':
-            message = 'Cette commande DLNA n’est pas disponible dans l’état actuel du lecteur.'
+            message = 'This DLNA command is unavailable in the current player state.'
         else:
-            message = f'La commande DLNA {action} a échoué' + (f' (code {code})' if code and code.isdigit() else '') + '.'
+            message = f'DLNA command {action} failed' + (f' (code {code})' if code and code.isdigit() else '') + '.'
         super().__init__(message)
 
 
@@ -197,7 +197,7 @@ class DlnaPlayer:
         service = self.device['serviceType']
         control = self.device['controlURL']
         if not local_location(control, self.device['address']) or not re.fullmatch(r'urn:schemas-upnp-org:service:(?:AVTransport|ConnectionManager):\d+', service):
-            raise ValueError('Adresse de contrôle DLNA invalide. Relance la recherche.')
+            raise ValueError('Invalid DLNA control URL. Scan again.')
         envelope = ET.Element('s:Envelope', {'xmlns:s': 'http://schemas.xmlsoap.org/soap/envelope/', 's:encodingStyle': 'http://schemas.xmlsoap.org/soap/encoding/'})
         body = ET.SubElement(envelope, 's:Body')
         operation = ET.SubElement(body, f'u:{action}', {'xmlns:u': service})
@@ -224,7 +224,7 @@ class DlnaPlayer:
             except DlnaError:
                 raise
             except Exception:
-                raise ValueError('La TV DLNA ne répond pas. Vérifie qu’elle est allumée et sur le même réseau.') from None
+                raise ValueError('The DLNA TV is not responding. Check that it is on and connected to the same network.') from None
 
     async def formats(self):
         connection = self.device.get('connectionManager')

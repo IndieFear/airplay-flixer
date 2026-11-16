@@ -22,7 +22,7 @@ def download_url(value):
     p = urlsplit(value if isinstance(value, str) else '')
     host = p.hostname or ''
     if p.scheme != 'https' or p.username or p.password or p.port not in (None,443) or not any(host == d or host.endswith('.'+d) for d in ('opensubtitles.com','opensubtitles.org')):
-        raise ValueError('OpenSubtitles a renvoyé une adresse de téléchargement non autorisée.')
+        raise ValueError('OpenSubtitles returned an unauthorized download URL.')
     return value
 
 
@@ -40,7 +40,7 @@ class OpenSubtitles:
     async def request(self, client, method, endpoint, *, params=None, body=None, config=None):
         config = self.config if config is None else config
         if not config.get('key'):
-            raise ValueError('Ajoute ta clé API OpenSubtitles dans Paramètres.')
+            raise ValueError('Add your OpenSubtitles API key in Settings.')
         host = config.get('host','api.opensubtitles.com')
         if host not in API_HOSTS:
             host = 'api.opensubtitles.com'
@@ -58,24 +58,24 @@ class OpenSubtitles:
                         from urllib.parse import urljoin
                         destination = urljoin(url,response.headers.get('Location',''))
                         if urlsplit(destination).scheme != 'https' or urlsplit(destination).netloc != urlsplit(url).netloc:
-                            raise ValueError('Redirection OpenSubtitles refusée.')
+                            raise ValueError('OpenSubtitles redirect refused.')
                         url = destination
                         continue
                     if response.status >= 400:
-                        messages = {401:'Connexion OpenSubtitles expirée ou identifiants refusés. Reconnecte ton compte dans Paramètres.',403:'OpenSubtitles a refusé la demande. Vérifie ta clé API, ton compte et ton quota.',406:'Quota de téléchargements OpenSubtitles atteint.',429:'OpenSubtitles reçoit trop de demandes. Réessaie dans quelques instants.'}
+                        messages = {401:'OpenSubtitles session expired or credentials rejected. Reconnect your account in Settings.',403:'OpenSubtitles refused the request. Check your API key, account and quota.',406:'OpenSubtitles download quota reached.',429:'OpenSubtitles is receiving too many requests. Try again shortly.'}
                         raise ValueError(messages.get(response.status, f'OpenSubtitles est indisponible (HTTP {response.status}).'))
                     chunks = bytearray()
                     async for chunk in response.content.iter_chunked(65536):
                         chunks.extend(chunk)
                         if len(chunks)>2_000_000:
-                            raise ValueError('Réponse OpenSubtitles trop volumineuse.')
+                            raise ValueError('OpenSubtitles response too large.')
                     data = json.loads(chunks)
                     if not isinstance(data,dict):
-                        raise ValueError('Réponse OpenSubtitles invalide.')
+                        raise ValueError('Invalid OpenSubtitles response.')
                     return data
-            raise ValueError('Trop de redirections OpenSubtitles.')
+            raise ValueError('Too many OpenSubtitles redirects.')
         except (aiohttp.ClientError,TimeoutError, json.JSONDecodeError):
-            raise ValueError('Impossible de joindre OpenSubtitles. Réessaie dans un instant.') from None
+            raise ValueError('Cannot reach OpenSubtitles. Try again shortly.') from None
 
     async def configure(self, client, message):
         async with self.lock:
@@ -85,20 +85,20 @@ class OpenSubtitles:
                 return self.status()
             key = message.get('key') or self.config.get('key','')
             if not isinstance(key,str) or not 1<=len(key)<=512 or any(ord(c)<33 or ord(c)>126 for c in key):
-                raise ValueError('Entre une clé API OpenSubtitles valide.')
+                raise ValueError('Enter a valid OpenSubtitles API key.')
             updated = dict(self.config) if key == self.config.get('key') else {}
             updated['key'] = key
             username,password = message.get('username'),message.get('password')
             if username or password:
                 if not isinstance(username,str) or not isinstance(password,str) or not username or not password or len(username)>200 or len(password)>1024:
-                    raise ValueError('Renseigne le nom de compte et le mot de passe pour te connecter.')
+                    raise ValueError('Enter your username and password to sign in.')
                 login = await self.request(client,'POST','login',body={'username':username,'password':password},config={'key':key})
                 token = login.get('token')
                 if not isinstance(token,str) or not token or len(token)>8192 or any(ord(c)<33 or ord(c)>126 for c in token):
-                    raise ValueError('OpenSubtitles n’a pas renvoyé de connexion valide.')
+                    raise ValueError('OpenSubtitles did not return a valid session.')
                 host = login.get('base_url','api.opensubtitles.com').removeprefix('https://').rstrip('/')
                 if host not in API_HOSTS:
-                    raise ValueError('Serveur de connexion OpenSubtitles non reconnu.')
+                    raise ValueError('Unrecognized OpenSubtitles authentication server.')
                 updated.update(token=token,username=limited(username),host=host)
             write_json(self.path,updated)
             self.config=updated;self.results.clear();self.downloads.clear()
@@ -110,7 +110,7 @@ class OpenSubtitles:
             language=message.get('language','fr')
             kind=message.get('type','movie')
             if len(query)<2 or language not in LANGUAGES or kind not in {'movie','episode'}:
-                raise ValueError('Renseigne le titre ou l’identifiant IMDb et la langue recherchée.')
+                raise ValueError('Enter a title or IMDb ID and choose a language.')
             params={'languages':language,'type':kind,'order_by':'download_count','order_direction':'desc'}
             imdb=re.fullmatch(r'tt(\d+)',query)
             params['imdb_id' if imdb else 'query']=str(int(imdb[1])) if imdb else query
@@ -118,11 +118,11 @@ class OpenSubtitles:
                 for key in ('season_number','episode_number'):
                     value=message.get(key)
                     if isinstance(value,bool) or not isinstance(value,int) or not (0 if key=='season_number' else 1)<=value<=999:
-                        raise ValueError('Précise la saison et l’épisode recherchés.')
+                        raise ValueError('Enter the season and episode numbers.')
                     params[key]=value
             page=message.get('page',1)
             if isinstance(page,bool) or not isinstance(page,int) or not 1<=page<=100:
-                raise ValueError('Page de résultats invalide.')
+                raise ValueError('Invalid results page.')
             if page>1:params['page']=page
             data=await self.request(client,'GET','subtitles',params=params)
             found=[]
@@ -140,7 +140,7 @@ class OpenSubtitles:
     async def download(self, client, file_id):
         async with self.lock:
             if isinstance(file_id,bool) or not isinstance(file_id,int) or file_id not in self.results:
-                raise ValueError('Relance la recherche puis sélectionne une piste de ses résultats.')
+                raise ValueError('Search again and select a track from the results.')
             for identifier,track in self.downloads.items():
                 if track['fileId']==file_id:return {'id':identifier,'track':track['track'],'remaining':track.get('remaining')}
             entry=self.results[file_id]
@@ -152,19 +152,19 @@ class OpenSubtitles:
                         if response.status in {301,302,307,308}:
                             from urllib.parse import urljoin
                             url=download_url(urljoin(url,response.headers.get('Location','')));continue
-                        if response.status != 200:raise ValueError('Le téléchargement OpenSubtitles a échoué. Réessaie la recherche.')
+                        if response.status != 200:raise ValueError('OpenSubtitles download failed. Search again.')
                         content=bytearray()
                         async for chunk in response.content.iter_chunked(65536):
                             content.extend(chunk)
-                            if len(content)>500000:raise ValueError('Cette piste dépasse la taille autorisée de 500 Ko.')
+                            if len(content)>500000:raise ValueError('This track exceeds the 500 KB size limit.')
                         break
-                else:raise ValueError('Trop de redirections pour le téléchargement.')
+                else:raise ValueError('Too many download redirects.')
             except (aiohttp.ClientError,TimeoutError):
-                raise ValueError('Le téléchargement de la piste a expiré.') from None
+                raise ValueError('The subtitle download timed out.') from None
             try:text=content.decode('utf-16' if content.startswith((b'\xff\xfe',b'\xfe\xff')) else 'utf-8-sig')
             except UnicodeDecodeError:text=content.decode('cp1252',errors='replace')
             if len(text.encode())>500000 or not re.search(r'\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s*-->',text):
-                raise ValueError('Le fichier téléchargé ne contient pas de sous-titres SRT/WebVTT valides.')
+                raise ValueError('The downloaded file contains no valid SRT/WebVTT subtitles.')
             label='OpenSubtitles · '+(entry['release'] or entry['title'])
             track={'content':text,'label':label,'language':entry['language'],'provider':'opensubtitles','fileId':file_id}
             identifier=secrets.token_urlsafe(18)

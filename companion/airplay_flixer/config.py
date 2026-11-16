@@ -30,10 +30,10 @@ def write_json(path: Path, value):
 
 def web_url(value: str) -> str:
     if not isinstance(value, str) or len(value) > 16384:
-        raise ValueError("Adresse du média invalide.")
+        raise ValueError("Invalid media URL.")
     parts = urlsplit(value)
     if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
-        raise ValueError("Le média doit avoir une adresse HTTP ou HTTPS, pas une URL blob:.")
+        raise ValueError("The media must have an HTTP or HTTPS URL. Blob URLs are unsupported.")
     return value
 
 

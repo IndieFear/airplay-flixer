@@ -20,16 +20,16 @@ def read_message(stream):
     if not size:
         return None
     if len(size) != 4:
-        raise ValueError("Message Chrome incomplet.")
+        raise ValueError("Incomplete Chrome message.")
     length = struct.unpack("<I", size)[0]
     if length > MAX_MESSAGE:
-        raise ValueError("Message Chrome trop volumineux.")
+        raise ValueError("Chrome message too large.")
     payload = stream.read(length)
     if len(payload) != length:
-        raise ValueError("Message Chrome incomplet.")
+        raise ValueError("Incomplete Chrome message.")
     value = json.loads(payload)
     if not isinstance(value, dict):
-        raise ValueError("Message Chrome invalide.")
+        raise ValueError("Invalid Chrome message.")
     return value
 
 
@@ -43,7 +43,7 @@ def request(message):
     runtime = read_json(data_directory() / "runtime.json")
     port = runtime.get("port")
     if not isinstance(port, int) or not 1024 <= port <= 65535 or not runtime.get("token"):
-        raise ConnectionError("Compagnon arrêté.")
+        raise ConnectionError("Companion stopped.")
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}/rpc", data=json.dumps(message).encode(),
         headers={"Authorization": f"Bearer {runtime['token']}", "Content-Type": "application/json"},
@@ -61,7 +61,7 @@ def request_with_launch(message):
         settings = read_json(data_directory() / "installation.json")
         app = settings.get("app_path")
         if not app or not Path(app).is_dir():
-            return {"ok": False, "error": "Ouvre Airplay Flixer dans la barre de menus, puis réessaie."}
+            return {"ok": False, "error": "Open Airplay Flixer in the menu bar, then try again."}
         subprocess.run(["/usr/bin/open", "-g", app], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(40):
             time.sleep(0.25)
@@ -69,13 +69,13 @@ def request_with_launch(message):
                 return request(message)
             except (OSError, ValueError):
                 pass
-        return {"ok": False, "error": "Le compagnon n’a pas démarré. Ouvre Airplay Flixer et consulte son journal."}
+        return {"ok": False, "error": "The companion did not start. Open Airplay Flixer and check its log."}
 
 
 def main(browser_origin: str):
     settings = read_json(data_directory() / "installation.json")
     if browser_origin != settings.get("extension_origin"):
-        write_message(sys.stdout.buffer, {"ok": False, "error": "Extension non autorisée."})
+        write_message(sys.stdout.buffer, {"ok": False, "error": "Unauthorized extension."})
         return
     while True:
         try:

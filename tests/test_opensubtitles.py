@@ -54,7 +54,7 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_download_requires_result_and_reuses_cached_file_without_quota(self):
         with self.assertRaises(ValueError):await self.p.download(None,12)
-        self.p.results[12]={'title':'Film','release':'WEB-DL','language':'fr'}
+        self.p.results[12]={'title':'Movie','release':'WEB-DL','language':'fr'}
         self.p.request=AsyncMock(return_value={'link':'https://dl.opensubtitles.com/file.srt','remaining':4})
         client=MagicMock();client.get.return_value=Response(SRT.encode())
         first=await self.p.download(client,12);second=await self.p.download(client,12)

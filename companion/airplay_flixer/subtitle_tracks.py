@@ -11,7 +11,7 @@ def with_subtitle_tracks(playlist, tracks):
     lines = [re.sub(r',?SUBTITLES="[^"]*"', '', line).replace(':,', ':').rstrip(',') + ',SUBTITLES="flixer-subs"' if line.startswith('#EXT-X-STREAM-INF:') else line for line in lines]
     names = set()
     def unique(label):
-        label = re.sub(r'["\r\n\x00-\x1f]', '', str(label))[:95] or 'Sous-titres'
+        label = re.sub(r'["\r\n\x00-\x1f]', '', str(label))[:95] or 'Subtitles'
         candidate, index = label, 2
         while candidate in names:
             candidate = f'{label} ({index})'; index += 1
@@ -20,7 +20,7 @@ def with_subtitle_tracks(playlist, tracks):
     entries = []
     default = next((i for i,t in enumerate(tracks) if t.get('default')), 0)
     for i, track in enumerate(tracks):
-        label = unique(track.get('label') or f'Piste {i+1}')
+        label = unique(track.get('label') or f'Track {i+1}')
         language = re.sub(r'[^a-zA-Z0-9-]', '', str(track.get('language') or 'und'))[:20] or 'und'
         selected = 'YES' if i == default else 'NO'
         entries.append(f'#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="flixer-subs",NAME="{label}",LANGUAGE="{language}",DEFAULT={selected},AUTOSELECT={selected},FORCED=NO,URI="{track["url"]}"')
@@ -33,7 +33,7 @@ def with_subtitle_tracks(playlist, tracks):
         seen.add(uri[1])
         name = re.search(r'NAME="([^"]*)"', line)
         line = re.sub(r'GROUP-ID="[^"]*"', 'GROUP-ID="flixer-subs"', line)
-        label = unique(name[1] if name else 'Piste intégrée')
+        label = unique(name[1] if name else 'Embedded track')
         line = re.sub(r'NAME="[^"]*"', lambda _: f'NAME="{label}"', line)
         line = re.sub(r',?(?:DEFAULT|AUTOSELECT)=(?:YES|NO)', '', line)
         entries.append(line + ',DEFAULT=NO,AUTOSELECT=NO')

@@ -25,7 +25,7 @@ test("labels omit query tokens and remain bounded", () => {
 
 test("extracts WebVTT from array-like browser cue lists", () => {
   const previous = globalThis.document;
-  const track = {kind: "subtitles", language: "fr", label: "Français", mode: "showing", cues: {0: {startTime: 1.25, endTime: 3.5, text: "Bonjour"}, length: 1}};
+  const track = {kind: "subtitles", language: "fr", label: "French", mode: "showing", cues: {0: {startTime: 1.25, endTime: 3.5, text: "Bonjour"}, length: 1}};
   const video = {currentSrc: "blob:https://page/id", currentTime: 10, duration: 60, paused: false, videoWidth: 320, videoHeight: 180, querySelectorAll: () => [], textTracks: {0: track, length: 1}};
   globalThis.document = {title: "Test", querySelectorAll: () => [video]};
   try {

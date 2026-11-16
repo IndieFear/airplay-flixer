@@ -52,19 +52,19 @@ def propose(reference, subtitles):
     def uncertain(reason,message):
         return {'state':'uncertain','reason':reason,'message':message,'sampleSeconds':round(n/RATE),'diagnostics':dict(diagnostic)}
     if n<80*RATE or np.sum(r)<8*RATE or not .03<float(np.mean(r))<.9:
-        return uncertain('insufficient_speech','Pas assez de dialogue exploitable dans cet extrait.')
+        return uncertain('insufficient_speech','Not enough usable dialogue in this sample.')
     if not .03<float(np.mean(s))<.95:
-        return uncertain('insufficient_captions','Les sous-titres ne couvrent pas suffisamment cet extrait.')
+        return uncertain('insufficient_captions','The subtitles do not cover enough of this sample.')
     limit=min(MAX_OFFSET*RATE,n//3)
     delta=int(FFTAligner(max_offset_samples=limit).fit(r,s).transform())
     diagnostic['candidateOffset']=round(delta/RATE,2)
     if abs(delta)>=limit-10:
-        return uncertain('search_boundary','Le décalage semble dépasser la plage de recherche automatique.')
+        return uncertain('search_boundary','The offset appears to exceed the automatic search range.')
     aligned=shifted(s,delta)
     correlation,f1=phi_score(r,aligned)
     diagnostic.update(correlation=round(correlation,3),overlap=round(f1,3))
     if correlation<.12 or f1<.4:
-        return uncertain('weak_match','La correspondance entre les voix et cette piste est trop faible pour confirmer une correction.')
+        return uncertain('weak_match','The match between speech and this track is too weak to confirm a correction.')
     checks=[]
     for start,end in [(0,n//2),(n//2,n)]:
         a,b=r[start:end],aligned[start:end]
@@ -82,10 +82,10 @@ def propose(reference, subtitles):
         checks.append({'informative':True,'correlation':round(score,3),'overlap':round(overlap,3),'nearbyOffset':round(best_delta/RATE,2),'nearbyGain':round(best_score-score,3)})
     diagnostic['windows']=checks
     if any(c.get('informative') and abs(c['nearbyOffset']-delta/RATE)>1.5 and c['nearbyGain']>.1 for c in checks):
-        return uncertain('inconsistent_windows','Les passages donnent des corrections différentes ; un décalage constant ne peut pas être confirmé.')
+        return uncertain('inconsistent_windows','The samples suggest different corrections. A constant offset could not be confirmed.')
     if len([c for c in checks if c.get('informative') and c['correlation']>=.10 and c['overlap']>=.4])<2:
-        return uncertain('insufficient_validation','Un des passages est trop peu concluant pour confirmer le décalage. Cela ne prouve pas une différence de montage.')
-    return {'state':'proposed','offset':round(delta/RATE,2),'quality':'consistent','message':'La même correction est confirmée sur les deux parties de l’extrait.','sampleSeconds':round(n/RATE),'correlation':round(correlation,3),'overlap':round(f1,3),'diagnostics':diagnostic}
+        return uncertain('insufficient_validation','One sample is inconclusive, so the offset could not be confirmed. This does not establish a different cut.')
+    return {'state':'proposed','offset':round(delta/RATE,2),'quality':'consistent','message':'The same correction was confirmed in both halves of the sample.','sampleSeconds':round(n/RATE),'correlation':round(correlation,3),'overlap':round(f1,3),'diagnostics':diagnostic}
 
 
 def analyse_files(audio, intervals, start):
@@ -93,7 +93,7 @@ def analyse_files(audio, intervals, start):
     import webrtcvad
     with wave.open(str(audio),'rb') as source:
         if source.getnchannels()!=1 or source.getsampwidth()!=2 or source.getframerate()!=16000 or source.getnframes()>16000*(WINDOW+5):
-            raise ValueError('Extrait audio invalide.')
+            raise ValueError('Invalid audio sample.')
         pcm=source.readframes(source.getnframes())
     detector=webrtcvad.Vad(3)
     step=320 # 10 ms of mono PCM16 at 16 kHz.
@@ -104,7 +104,7 @@ def analyse_files(audio, intervals, start):
         a,b=max(0,round((begin-start)*RATE)),min(len(reference),round((end-start)*RATE))
         if b>a:captions[a:b]=1;count+=1
     if count<8:
-        return {'state':'uncertain','reason':'insufficient_captions','sampleSeconds':round(len(reference)/RATE),'message':'Trop peu de répliques dans cet extrait pour synchroniser automatiquement cette piste.'}
+        return {'state':'uncertain','reason':'insufficient_captions','sampleSeconds':round(len(reference)/RATE),'message':'Too few lines in this sample to sync this track automatically.'}
     return propose(reference,captions)
 
 
@@ -114,7 +114,7 @@ def worker_main(filename):
         config=json.loads(Path(filename).read_text())
         result=analyse_files(config['audio'],config['intervals'],config['start'])
     except Exception:
-        result={'state':'failed','message':'L’analyse locale des voix a échoué. Le réglage manuel reste disponible.'}
+        result={'state':'failed','message':'Local speech analysis failed. Manual adjustment is available.'}
     print(json.dumps(result),flush=True)
 
 
@@ -123,7 +123,7 @@ async def run_process(arguments, timeout):
     try:
         output,_=await asyncio.wait_for(process.communicate(),timeout)
         if process.returncode:
-            raise ValueError('L’extrait audio ne peut pas être analysé. Vérifie la piste sonore et réessaie.')
+            raise ValueError('Cannot analyze the audio sample. Check the audio track and try again.')
         return output
     finally:
         if process.returncode is None:
@@ -136,12 +136,12 @@ async def analyse(media,index,position,loopback,progress):
     from .dlna_compat import choose_manifest,attributes
     ffmpeg,probe=binary('ffmpeg'),binary('ffprobe')
     if not ffmpeg or not probe:
-        raise ValueError('FFmpeg est nécessaire pour la synchronisation automatique.')
-    progress('subtitle','Lecture de la piste de sous-titres…')
+        raise ValueError('FFmpeg is required for automatic synchronization.')
+    progress('subtitle','Reading subtitle track…')
     raw=await media.subtitle_vtt(index)
     intervals=cue_intervals(raw)
     if len(intervals)<8:
-        return {'state':'uncertain','message':'Cette piste contient trop peu de répliques pour une analyse fiable.'}
+        return {'state':'uncertain','message':'This track has too few lines for reliable analysis.'}
     source=media.source
     hls=media.kind=='hls' or '.m3u8' in source.split('?',1)[0]
     if media.directory:
@@ -177,17 +177,17 @@ async def analyse(media,index,position,loopback,progress):
         folder=Path(directory)
         for attempt,start in enumerate(starts,1):
             audio=folder/f'sample-{attempt}.wav'
-            progress('audio',f'Extraction de l’extrait audio {attempt}/{len(starts)}…' if attempt==1 else 'Premier extrait peu concluant : analyse d’un autre passage…')
+            progress('audio',f'Extracting audio sample {attempt}/{len(starts)}…' if attempt==1 else 'First sample inconclusive. Analyzing another passage…')
             await run_process([ffmpeg,'-v','error','-nostdin','-y',*(hls_probe_options(probe) if hls else ()), '-ss',str(start),'-i',local,'-t',str(WINDOW),'-map','0:a:0','-vn','-sn','-dn','-ac','1','-ar','16000','-c:a','pcm_s16le',str(audio)],120)
             if not audio.exists() or audio.stat().st_size>16000*2*(WINDOW+5)+4096:
-                raise ValueError('L’extrait audio est invalide ou trop volumineux.')
+                raise ValueError('The audio sample is invalid or too large.')
             config=folder/'job.json';config.write_text(json.dumps({'audio':str(audio),'intervals':intervals,'start':start}))
-            progress('align',f'Comparaison des voix avec les sous-titres (extrait {attempt})…')
+            progress('align',f'Comparing speech with subtitles (sample {attempt})…')
             command=[sys.executable] if getattr(sys,'frozen',False) else [sys.executable,str(Path(__file__).resolve().parents[1]/'entry.py')]
             output=await run_process([*command,'--autosync-worker',str(config)],45)
             result=json.loads(output)
             if result.get('state') not in {'proposed','uncertain','failed'}:
-                raise ValueError('Résultat d’analyse automatique invalide.')
+                raise ValueError('Invalid automatic analysis result.')
             analysed+=result.get('sampleSeconds',0)
             result.update(attempts=attempt,analysedSeconds=analysed)
             if result['state'] in {'proposed','failed'}:return result

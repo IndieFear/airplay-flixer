@@ -89,7 +89,7 @@ class ArtworkRelayTests(unittest.IsolatedAsyncioTestCase):
         import base64
         from airplay_flixer.media import MediaSession
         jpeg = b'\xff\xd8fixture\xff\xd9'
-        media = MediaSession(None, {'url':'https://source.test/master.m3u8','kind':'hls','title':'Film','artwork':base64.b64encode(jpeg).decode()}, 'http://192.168.1.2:9999')
+        media = MediaSession(None, {'url':'https://source.test/master.m3u8','kind':'hls','title':'Movie','artwork':base64.b64encode(jpeg).decode()}, 'http://192.168.1.2:9999')
         media.fetch_text = AsyncMock(return_value=('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nvideo.m3u8\n','https://source.test/master.m3u8'))
         playlist = await media.master()
         self.assertIn(f'VALUE="{media.base}/artwork.jpg"', playlist)

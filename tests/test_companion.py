@@ -37,9 +37,9 @@ class ProtocolTests(unittest.TestCase):
 
     def test_native_message_utf8_roundtrip_and_eof(self):
         output = io.BytesIO()
-        write_message(output, {'action': 'cast', 'title': 'Épisode français'})
+        write_message(output, {'action': 'cast', 'title': 'Episode français'})
         output.seek(0)
-        self.assertEqual(read_message(output)['title'], 'Épisode français')
+        self.assertEqual(read_message(output)['title'], 'Episode français')
         self.assertIsNone(read_message(output))
 
     def test_truncated_and_oversized_native_messages(self):
@@ -63,7 +63,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_subtitle_groups_and_off_preserve_audio(self):
         master = '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",URI="audio.m3u8"\n#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="old",URI="old.m3u8"\n#EXT-X-STREAM-INF:SUBTITLES="old",BANDWIDTH=100,AUDIO="a"\nvideo.m3u8\n'
-        wrapped = with_subtitles(master, 'http://relay/subs.m3u8', 'Français', 'fr')
+        wrapped = with_subtitles(master, 'http://relay/subs.m3u8', 'French', 'fr')
         self.assertEqual(wrapped.count('TYPE=SUBTITLES'), 1)
         self.assertIn('TYPE=AUDIO', wrapped)
         self.assertIn('SUBTITLES="flixer-subs"', wrapped)
@@ -220,7 +220,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             await other.close()
 
     async def test_external_srt_is_declared_and_synced(self):
-        media, base = self.new_session(subtitle={'url': str(self.source.make_url('/subs.srt')), 'language': 'fr', 'label': 'Français'})
+        media, base = self.new_session(subtitle={'url': str(self.source.make_url('/subs.srt')), 'language': 'fr', 'label': 'French'})
         with patch.object(media, 'timestamp', AsyncMock(return_value=126000)):
             url = await media.prepare(base)
         async with self.client.get(url) as response:
@@ -234,9 +234,9 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_alternative_subtitles_are_selectable_lazy_cached_and_independently_synced(self):
         tracks = [
-            {'content': '1\n00:00:00,000 --> 00:00:02,000\nInitiale\n', 'language':'fr','label':'Piste 1','default':True},
-            {'url':str(self.source.make_url('/subs.srt')), 'language':'fr','label':'Piste 2'},
-            {'url':str(self.source.make_url('/missing.srt')), 'language':'fr','label':'Piste 3'},
+            {'content': '1\n00:00:00,000 --> 00:00:02,000\nInitiale\n', 'language':'fr','label':'Track 1','default':True},
+            {'url':str(self.source.make_url('/subs.srt')), 'language':'fr','label':'Track 2'},
+            {'url':str(self.source.make_url('/missing.srt')), 'language':'fr','label':'Track 3'},
         ]
         media, base = self.new_session(subtitle=tracks[0], subtitles=tracks)
         with patch.object(media, 'timestamp', AsyncMock(return_value=126000)) as timestamp:

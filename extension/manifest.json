@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Airplay Flixer",
-  "version": "0.15.1",
-  "description": "Envoie la vidéo de l’onglet et ses sous-titres à ton Apple TV avec le compagnon Mac.",
+  "version": "0.16.0",
+  "description": "Cast videos and subtitles from your browser tab to Apple TV with the Mac companion.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -20,7 +20,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Airplay Flixer · Aucun flux vidéo détecté",
+    "default_title": "Airplay Flixer · No video stream detected",
     "default_icon": {
       "16": "icons/idle-16.png",
       "24": "icons/idle-24.png",
@@ -36,7 +36,7 @@
         "default": "Alt+Shift+A",
         "mac": "Alt+Shift+A"
       },
-      "description": "Caster la vidéo sur l’Apple TV favorite"
+      "description": "Cast video to your default Apple TV"
     }
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA42YVvSOrS/eQulQKjxjKSbl7kN7Yo1ITGmBIp8ht5us0NwZ5kuDj+uqLinygEF/eZLcanm4lCI0qZMuY/XHYHfI7OlixRxHjJHXPv3aR1IOVR7D/9DGxt1ymhGNaeA9IRnkjTYPxpIfR0Efnu18Mn/6VX+nMJIvdk8BTvyIyM+X5NKMsf45VpR20FHEMNcfJ3C79L6MSyB3cKzQHREVY7Xl/8VjVH5+WKaliokWdD9zx3HGA7FPf+CVUNGZiIpvxgF+0aLuPtWXtFH7AOanjIP8Ril8DubApJeLUxaKqfAHJIhYeKOMvIvvj0+rAtCVd2KrgSpu6PJf235SyfP1W3wIDAQAB",

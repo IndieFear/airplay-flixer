@@ -15,10 +15,10 @@ from .opensubtitles import limited, LANGUAGES
 
 
 def file_url(value):
-    if not isinstance(value,str):raise ValueError('Adresse SubDL invalide.')
+    if not isinstance(value,str):raise ValueError('Invalid SubDL URL.')
     url=urlsplit(urljoin('https://dl.subdl.com',value))
     if url.scheme!='https' or url.hostname!='dl.subdl.com' or url.port not in (None,443) or url.username or url.password or not url.path.startswith('/subtitle/'):
-        raise ValueError('Adresse de téléchargement SubDL non autorisée.')
+        raise ValueError('Unauthorized SubDL download URL.')
     return urlunsplit((url.scheme,url.netloc,url.path,urlencode([(k,v) for k,v in parse_qsl(url.query) if k.lower()!='api_key']),''))
 
 
@@ -28,24 +28,24 @@ def subtitle_text(content, season=None, episode=None):
             with zipfile.ZipFile(io.BytesIO(content)) as archive:
                 entries=archive.infolist()
                 if len(entries)>100 or sum(f.file_size for f in entries)>20_000_000:
-                    raise ValueError('Archive SubDL trop volumineuse.')
+                    raise ValueError('SubDL archive too large.')
                 files=[f for f in entries if not f.is_dir() and f.filename.lower().endswith(('.srt','.vtt')) and not f.filename.startswith('__MACOSX/')]
                 if episode is not None:
                     pattern=rf'(?i)(?<!\d)(?:s0*{season}[ ._-]*e0*{episode}|0*{season}x0*{episode})(?!\d)'
                     matched=[f for f in files if re.search(pattern,f.filename)]
                     if matched:files=matched
-                    elif len(files)>1 or any(re.search(r'(?i)\bs\d+e\d+|\d+x\d+',f.filename) for f in files):raise ValueError('Impossible d’identifier cet épisode dans l’archive. Choisis une piste détaillée.')
-                if len(files)!=1:raise ValueError('Cette archive contient plusieurs pistes ou aucun SRT/WebVTT. Choisis une piste détaillée.')
+                    elif len(files)>1 or any(re.search(r'(?i)\bs\d+e\d+|\d+x\d+',f.filename) for f in files):raise ValueError('Cannot identify this episode in the archive. Choose a specific track.')
+                if len(files)!=1:raise ValueError('This archive contains multiple tracks or no SRT/WebVTT file. Choose a specific track.')
                 member=files[0]
-                if member.file_size>500000 or member.flag_bits & 1:raise ValueError('Piste SubDL trop volumineuse ou archive protégée.')
+                if member.file_size>500000 or member.flag_bits & 1:raise ValueError('SubDL track too large or archive password protected.')
                 with archive.open(member) as stream:content=stream.read(500001)
         except (zipfile.BadZipFile,RuntimeError,NotImplementedError,OSError):
-            raise ValueError('Archive de sous-titres SubDL invalide.') from None
-    if len(content)>500000:raise ValueError('Cette piste dépasse la limite de 500 Ko.')
+            raise ValueError('Invalid SubDL subtitle archive.') from None
+    if len(content)>500000:raise ValueError('This track exceeds the 500 KB limit.')
     try:text=content.decode('utf-16' if content.startswith((b'\xff\xfe',b'\xfe\xff')) else 'utf-8-sig')
     except UnicodeDecodeError:text=content.decode('cp1252',errors='replace')
     if len(text.encode())>500000 or not re.search(r'\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s*-->',text):
-        raise ValueError('La piste SubDL ne contient pas de sous-titres SRT/WebVTT valides.')
+        raise ValueError('The SubDL track contains no valid SRT/WebVTT subtitles.')
     return text
 
 
@@ -62,44 +62,44 @@ class SubDL:
                 self.path.unlink(missing_ok=True);self.config={}
             else:
                 key=message.get('key') or self.config.get('key','')
-                if not isinstance(key,str) or not 1<=len(key)<=512 or any(ord(c)<33 or ord(c)>126 for c in key):raise ValueError('Entre une clé API SubDL valide.')
+                if not isinstance(key,str) or not 1<=len(key)<=512 or any(ord(c)<33 or ord(c)>126 for c in key):raise ValueError('Enter a valid SubDL API key.')
                 write_json(self.path,{'key':key});self.config={'key':key}
             self.results.clear();self.downloads.clear()
             return self.status()
 
     async def request(self,client,params):
-        if not self.config.get('key'):raise ValueError('Ajoute ta clé API SubDL dans Paramètres.')
+        if not self.config.get('key'):raise ValueError('Add your SubDL API key in Settings.')
         url='https://api.subdl.com/api/v1/subtitles?'+urlencode(sorted({**params,'api_key':self.config['key']}.items()))
         try:
             async with client.get(url,headers={'User-Agent':f'Airplay Flixer v{VERSION}','Accept':'application/json'},allow_redirects=False,timeout=aiohttp.ClientTimeout(total=20)) as response:
-                if response.status in {401,403}:raise ValueError('Clé API SubDL refusée. Vérifie-la dans Paramètres.')
-                if response.status==429:raise ValueError('Quota ou limite de demandes SubDL atteint. Réessaie plus tard.')
+                if response.status in {401,403}:raise ValueError('SubDL API key rejected. Check it in Settings.')
+                if response.status==429:raise ValueError('SubDL quota or request limit reached. Try again later.')
                 if response.status!=200:raise ValueError(f'SubDL est indisponible (HTTP {response.status}).')
                 body=bytearray()
                 async for chunk in response.content.iter_chunked(65536):
                     body.extend(chunk)
-                    if len(body)>2_000_000:raise ValueError('Réponse SubDL trop volumineuse.')
+                    if len(body)>2_000_000:raise ValueError('SubDL response too large.')
                 data=json.loads(body)
-                if not isinstance(data,dict) or data.get('status') is not True:raise ValueError('SubDL a refusé la recherche. Vérifie ta clé et les critères.')
+                if not isinstance(data,dict) or data.get('status') is not True:raise ValueError('SubDL refused the search. Check your key and search criteria.')
                 return data
         except (aiohttp.ClientError,TimeoutError,json.JSONDecodeError):
             # Exceptions may contain the API key in the URL: never expose them.
-            raise ValueError('Impossible de joindre SubDL. Réessaie dans un instant.') from None
+            raise ValueError('Cannot reach SubDL. Try again shortly.') from None
 
     async def search(self,client,message):
         async with self.lock:
             query=limited(message.get('query'));language=message.get('language','fr');kind=message.get('type','movie')
-            if len(query)<2 or language not in LANGUAGES or kind not in {'movie','episode'}:raise ValueError('Renseigne le titre ou l’identifiant IMDb et la langue recherchée.')
+            if len(query)<2 or language not in LANGUAGES or kind not in {'movie','episode'}:raise ValueError('Enter a title or IMDb ID and choose a language.')
             params={'languages':'BR' if language=='pt-br' else language.upper(),'type':'tv' if kind=='episode' else 'movie','unpack':1,'releases':1,'subs_per_page':30,'client':'custom_integration'}
             params['imdb_id' if re.fullmatch(r'tt\d+',query,re.I) else 'film_name']=query
             season=episode=None
             if kind=='episode':
                 season,episode=message.get('season_number'),message.get('episode_number')
                 for name,value,minimum in [('season_number',season,0),('episode_number',episode,1)]:
-                    if isinstance(value,bool) or not isinstance(value,int) or not minimum<=value<=999:raise ValueError('Précise la saison et l’épisode recherchés.')
+                    if isinstance(value,bool) or not isinstance(value,int) or not minimum<=value<=999:raise ValueError('Enter the season and episode numbers.')
                     params[name]=value
             # V1 documents a bounded result count, not page navigation.
-            if message.get('page',1)!=1:raise ValueError('Affine la recherche SubDL pour obtenir d’autres résultats.')
+            if message.get('page',1)!=1:raise ValueError('Refine your SubDL search for more results.')
             data=await self.request(client,params);found=[]
             feature=(data.get('results') or [{}])[0];title=limited(feature.get('name') or query)
             for item in (data.get('subtitles') or [])[:60]:
@@ -126,7 +126,7 @@ class SubDL:
 
     async def download(self,client,file_id):
         async with self.lock:
-            if not isinstance(file_id,str) or file_id not in self.results:raise ValueError('Relance la recherche SubDL puis choisis une piste de ses résultats.')
+            if not isinstance(file_id,str) or file_id not in self.results:raise ValueError('Search SubDL again and choose a track from the results.')
             for identifier,item in self.downloads.items():
                 if item['fileId']==file_id:return {'id':identifier,'track':item['track']}
             entry=self.results[file_id];url=entry['url']
@@ -134,15 +134,15 @@ class SubDL:
                 for _ in range(4):
                     async with client.get(url,headers={'User-Agent':f'Airplay Flixer v{VERSION}'},allow_redirects=False,timeout=aiohttp.ClientTimeout(total=20)) as response:
                         if response.status in {301,302,307,308}:url=file_url(urljoin(url,response.headers.get('Location','')));continue
-                        if response.status==429:raise ValueError('Limite de téléchargements SubDL atteinte. Réessaie plus tard.')
-                        if response.status!=200:raise ValueError('Le téléchargement SubDL a échoué.')
+                        if response.status==429:raise ValueError('SubDL download limit reached. Try again later.')
+                        if response.status!=200:raise ValueError('SubDL download failed.')
                         content=bytearray()
                         async for chunk in response.content.iter_chunked(65536):
                             content.extend(chunk)
-                            if len(content)>2_000_000:raise ValueError('Téléchargement SubDL trop volumineux.')
+                            if len(content)>2_000_000:raise ValueError('SubDL download too large.')
                         break
-                else:raise ValueError('Trop de redirections SubDL.')
-            except (aiohttp.ClientError,TimeoutError):raise ValueError('Impossible de télécharger la piste SubDL.') from None
+                else:raise ValueError('Too many SubDL redirects.')
+            except (aiohttp.ClientError,TimeoutError):raise ValueError('Cannot download the SubDL track.') from None
             text=subtitle_text(bytes(content),entry['season'],entry['episode'])
             track={'content':text,'label':'SubDL · '+(entry['release'] or entry['title']),'language':entry['language'],'provider':'subdl','fileId':file_id}
             identifier=secrets.token_urlsafe(18);self.downloads[identifier]={'track':track,'fileId':file_id}

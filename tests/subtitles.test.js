@@ -19,7 +19,7 @@ test('subtitle languages use declared metadata, ISO aliases and recognizable lab
 test('groups prioritize French and English, keep original cast indexes and omit duplicate URLs',()=>{
   const tracks=[
     {url:'a',language:'en',label:'English'},
-    {url:'b',language:'fr',label:'Français',selected:true},
+    {url:'b',language:'fr',label:'French',selected:true},
     {url:'c',language:'und',label:'Unknown'},
     {url:'d',language:'es',label:'Spanish'},
     {url:'e',language:'fr',label:'Movie.1080p.WEBRip.x264.fr-1791483012.srt'},

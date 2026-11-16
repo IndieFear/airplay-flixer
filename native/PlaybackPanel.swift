@@ -21,11 +21,11 @@ final class JumpSlider: NSSlider {
 
 final class PlaybackPanel: NSPanel {
     var onCommand: ((String, Double?) -> Void)?
-    private let titleLabel = NSTextField(labelWithString: "Aucune diffusion en cours")
+    private let titleLabel = NSTextField(labelWithString: "No cast in progress")
     private let destination = NSTextField(labelWithString: "Apple TV")
     private let positionLabel = NSTextField(labelWithString: "0:00")
     private let durationLabel = NSTextField(labelWithString: "0:00")
-    private let statusLabel = NSTextField(wrappingLabelWithString: "Lance une vidéo depuis l’extension Chrome.")
+    private let statusLabel = NSTextField(wrappingLabelWithString: "Start a video from the Chrome extension.")
     private let slider = JumpSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
     private let pauseButton = NSButton(title: "Pause", target: nil, action: nil)
     private var buttons: [NSButton] = []
@@ -33,7 +33,7 @@ final class PlaybackPanel: NSPanel {
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 380, height: 210), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
-        title = "Contrôle Apple TV"
+        title = "Apple TV controls"
         isReleasedWhenClosed = false
         level = .floating
         center()
@@ -48,8 +48,8 @@ final class PlaybackPanel: NSPanel {
         slider.target = self
         slider.action = #selector(jump)
         slider.isContinuous = false
-        slider.setAccessibilityLabel("Position dans le film")
-        slider.toolTip = "Clique ou fais glisser pour déplacer la lecture sur l’Apple TV"
+        slider.setAccessibilityLabel("Playback position")
+        slider.toolTip = "Click or drag to seek on Apple TV"
         positionLabel.frame = NSRect(x: 18, y: 94, width: 150, height: 16)
         durationLabel.frame = NSRect(x: 212, y: 94, width: 150, height: 16)
         durationLabel.alignment = .right
@@ -61,7 +61,7 @@ final class PlaybackPanel: NSPanel {
         pauseButton.target = self
         pauseButton.action = #selector(toggle)
         let forward = NSButton(title: "+10 s", target: self, action: #selector(forward))
-        let stop = NSButton(title: "Arrêter", target: self, action: #selector(stopPlayback))
+        let stop = NSButton(title: "Stop", target: self, action: #selector(stopPlayback))
         buttons = [back, pauseButton, forward, stop]
         for (index, button) in buttons.enumerated() {
             button.frame = NSRect(x: 17 + index * 88, y: 47, width: 82, height: 30)
@@ -79,7 +79,7 @@ final class PlaybackPanel: NSPanel {
         let active = state["casting"] as? Bool == true
         let duration = state["duration"] as? Double ?? 0
         position = state["position"] as? Double ?? 0
-        titleLabel.stringValue = state["title"] as? String ?? "Aucune diffusion en cours"
+        titleLabel.stringValue = state["title"] as? String ?? "No cast in progress"
         destination.stringValue = state["selectedName"] as? String ?? "Apple TV"
         if !slider.tracking {
             slider.maxValue = max(duration, 1)
@@ -88,9 +88,9 @@ final class PlaybackPanel: NSPanel {
         slider.isEnabled = active && duration > 0 && !busy
         positionLabel.stringValue = Self.time(position)
         durationLabel.stringValue = Self.time(duration)
-        pauseButton.title = state["paused"] as? Bool == true ? "Lecture" : "Pause"
+        pauseButton.title = state["paused"] as? Bool == true ? "Play" : "Pause"
         for button in buttons { button.isEnabled = active && !busy }
-        statusLabel.stringValue = state["error"] as? String ?? (busy ? "Déplacement en cours…" : active ? "Clique dans la barre pour aller à cet instant." : "Lance une vidéo depuis l’extension Chrome.")
+        statusLabel.stringValue = state["error"] as? String ?? (busy ? "Seeking…" : active ? "Click the timeline to seek to that position." : "Start a video from the Chrome extension.")
         statusLabel.textColor = state["error"] as? String == nil ? .secondaryLabelColor : .systemRed
     }
 

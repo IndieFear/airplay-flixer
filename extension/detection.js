@@ -49,14 +49,14 @@ export function inspectPage() {
     title: document.title,
     mediaTitle: globalThis.navigator?.mediaSession?.metadata?.title || document.querySelector?.('meta[property="og:title"]')?.content || "",
     videos: [...document.querySelectorAll("video")].map((video, index) => {
-      const tracks = [...video.querySelectorAll("track")].filter(t => ["subtitles", "captions"].includes(t.kind)).map(t => ({url: t.src, label: t.label || t.srclang || "Sous-titres", language: t.srclang || "und", selected: t.track?.mode === "showing"}));
+      const tracks = [...video.querySelectorAll("track")].filter(t => ["subtitles", "captions"].includes(t.kind)).map(t => ({url: t.src, label: t.label || t.srclang || "Subtitles", language: t.srclang || "und", selected: t.track?.mode === "showing"}));
       for (const track of Array.from(video.textTracks)) {
         if (!["subtitles", "captions"].includes(track.kind)) continue;
         const existing = tracks.find(t => t.label === track.label && t.language === track.language);
         if (existing) { existing.selected = track.mode === "showing"; continue; }
         if (!track.cues?.length) continue;
         const content = "WEBVTT\n\n" + Array.from(track.cues).map(cue => `${time(cue.startTime)} --> ${time(cue.endTime)}\n${cue.text || ""}\n`).join("\n");
-        if (content.length < 350000) tracks.push({content, label: track.label || track.language || "Sous-titres du lecteur", language: track.language || "und", selected: track.mode === "showing"});
+        if (content.length < 350000) tracks.push({content, label: track.label || track.language || "Player subtitles", language: track.language || "und", selected: track.mode === "showing"});
       }
       return {index, src: video.currentSrc || video.src, sources: [...video.querySelectorAll("source")].map(s => s.src), position: video.currentTime || 0, duration: Number.isFinite(video.duration) ? video.duration : 0, playing: !video.paused, protected: !!video.mediaKeys, area: video.videoWidth * video.videoHeight || video.clientWidth * video.clientHeight, tracks};
     })

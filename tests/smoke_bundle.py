@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='flixer-smoke-') as directory:
         request = urllib.request.Request(f'http://127.0.0.1:{runtime["port"]}/rpc', data=b'{"action":"status"}', headers={'Authorization': 'Bearer ' + runtime['token'], 'Content-Type': 'application/json'})
         with opener.open(request, timeout=10) as response:
             result = json.load(response)
-        assert result['ok'] and result['result']['version'] == '0.10.1'
+        assert result['ok'] and result['result']['version'] == '0.11.0'
         assert result['result']['videoDownload'] == {'state':'idle'}
         assert result['result']['subdl'] == {'configured':False}
         assert result['result']['opensubtitles'] == {'configured':False,'connected':False,'username':''}
@@ -71,7 +71,7 @@ with tempfile.TemporaryDirectory(prefix='flixer-smoke-') as directory:
         host = subprocess.run([str(engine), f'chrome-extension://{extension_id}/'], input=wire, capture_output=True, env=environment, timeout=15, check=True)
         length = struct.unpack('<I', host.stdout[:4])[0]
         response = json.loads(host.stdout[4:4+length])
-        assert response['ok'] and response['result']['message'] == 'Prêt à caster'
+        assert response['ok'] and response['result']['message'] == 'Ready to cast'
         assert len(host.stdout) == length + 4, 'Diagnostics polluted Native Messaging stdout'
         denied = subprocess.run([str(engine), 'chrome-extension://not-authorized/'], input=wire, capture_output=True, env=environment, timeout=15, check=True)
         assert not json.loads(denied.stdout[4:])['ok']

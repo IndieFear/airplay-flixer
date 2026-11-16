@@ -24,7 +24,7 @@ function updateAction(tabId, detected) {
   actionStates.set(tabId, available);
   Promise.all([
     chrome.action.setIcon({tabId, path: iconPaths(available)}),
-    chrome.action.setTitle({tabId, title: available ? "Flux vidéo détecté · Ouvrir pour caster" : "Airplay Flixer · Aucun flux vidéo détecté"})
+    chrome.action.setTitle({tabId, title: available ? "Video stream found · Open to cast" : "Airplay Flixer · No video stream detected"})
   ]).catch(() => {}); // A tab can close between detection and the toolbar update.
 }
 function stateFor(tabId) {
@@ -97,8 +97,8 @@ chrome.tabs.onRemoved.addListener(id => { tabs.delete(id); actionStates.delete(i
 
 function native(message) {
   return new Promise((resolve, reject) => chrome.runtime.sendNativeMessage(HOST, message, result => {
-    if (chrome.runtime.lastError) return reject(new Error("Compagnon indisponible. Ouvre Airplay Flixer sur le Mac, puis réessaie."));
-    if (!result?.ok) return reject(new Error(result?.error || "Le compagnon n’a pas répondu."));
+    if (chrome.runtime.lastError) return reject(new Error("Companion unavailable. Open Airplay Flixer on your Mac and try again."));
+    if (!result?.ok) return reject(new Error(result?.error || "The companion did not respond."));
     resolve(result.result);
   }));
 }
@@ -163,14 +163,14 @@ async function inspect(tabId) {
   const subtitles = [...(state.imported || []), ...(video?.tracks || [])];
   for (const item of candidates.filter(c => c.kind === "subtitle")) if (!subtitles.some(t => t.url === item.url)) subtitles.push({url: item.url, label: labelFor(item.url, subtitles.length), language: /(?:^|[\/_.-])(fr|fra|fre)(?:[\/_.-]|$)/i.test(item.url) ? "fr" : "und"});
   const artwork = [...new Set([...(frames.find(f => f.frameId === 0)?.result?.artwork || []), ...(frames.find(f => f.frameId === video?.frameId)?.result?.artwork || [])])].slice(0,3);
-  return {video, videos, sources, subtitles, artwork, recommendedSubtitle: state.imported?.length ? 0 : null, title: video?.mediaTitle || frames.find(f => f.frameId === 0)?.result?.mediaTitle || frames.find(f => f.frameId === 0)?.result?.title || video?.title || frames[0]?.result?.title || "Vidéo web"};
+  return {video, videos, sources, subtitles, artwork, recommendedSubtitle: state.imported?.length ? 0 : null, title: video?.mediaTitle || frames.find(f => f.frameId === 0)?.result?.mediaTitle || frames.find(f => f.frameId === 0)?.result?.title || video?.title || frames[0]?.result?.title || "Web video"};
 }
 
 async function cast(tabId, url, subtitle, subtitleOffset = 0) {
-  if (typeof subtitleOffset !== "number" || !Number.isFinite(subtitleOffset) || Math.abs(subtitleOffset) > 600) throw new Error("Décalage des sous-titres invalide.");
+  if (typeof subtitleOffset !== "number" || !Number.isFinite(subtitleOffset) || Math.abs(subtitleOffset) > 600) throw new Error("Invalid subtitle offset.");
   const page = await inspect(tabId);
   const source = page.sources.find(item => item.url === url) || (!url ? page.sources[0] : null);
-  if (!source) throw new Error("Aucun flux détecté. Recharge la page puis lance la vidéo avant de caster.");
+  if (!source) throw new Error("No stream detected. Reload the page and play the video before casting.");
   const video = page.videos.find(v => v.src === source.url || v.sources.includes(source.url)) || page.videos.find(v => v.frameId === source.frameId) || page.video;
   const selected = subtitleSet(page.subtitles, subtitle === "auto" && page.recommendedSubtitle != null ? page.recommendedSubtitle : subtitle);
   const track = selected.primary;
@@ -180,7 +180,7 @@ async function cast(tabId, url, subtitle, subtitleOffset = 0) {
   const media = {url:source.url, kind:source.kind, title:page.title, position:video?.position || 0, duration:video?.duration || 0, subtitle:track, subtitles:selected.tracks, headersByOrigin};
   if ((await native({action:"status"})).selectedProtocol !== "dlna") media.artwork = await fetchArtwork(page.artwork);
   if (new TextEncoder().encode(JSON.stringify(media)).length > 850000) delete media.artwork;
-  if (new TextEncoder().encode(JSON.stringify(media)).length > 850000) throw new Error('Ces pistes de sous-titres sont trop volumineuses pour être transmises ensemble. Choisis une autre langue ou désactive les sous-titres externes.');
+  if (new TextEncoder().encode(JSON.stringify(media)).length > 850000) throw new Error('These subtitle tracks are too large to send together. Choose another language or turn off external subtitles.');
   const result = await native({action:"cast", media});
   chrome.action.setBadgeText({tabId, text: "TV"});
   chrome.action.setBadgeBackgroundColor({tabId, color: "#1673ef"});
@@ -206,9 +206,9 @@ async function confirmAndPause(tabId, video) {
 async function downloadVideo(tabId, url, subtitle) {
   const page = await inspect(tabId);
   const source = page.sources.find(item => item.url === url);
-  if (!downloadable(source)) throw new Error("Choisis une source vidéo HLS, MP4, MKV ou WebM.");
+  if (!downloadable(source)) throw new Error("Choose an HLS, MP4, MKV or WebM video source.");
   const video = page.videos.find(v => v.src === url || v.sources.includes(url)) || page.videos.find(v => v.frameId === source.frameId);
-  if (video?.protected) throw new Error("Ce lecteur utilise une protection DRM.");
+  if (video?.protected) throw new Error("This player uses DRM protection.");
   const selection = subtitle === "auto" && page.recommendedSubtitle != null ? page.recommendedSubtitle : subtitle;
   const track = subtitleSet(page.subtitles, selection).primary;
   const selected = track || (subtitle === "auto" && page.subtitles.length ? subtitleSet(page.subtitles, 0).primary : null);
@@ -229,7 +229,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       const title = (await inspect(message.tabId)).title;
       const result = await native({action:message.action, fileId:message.fileId});
       const current = stateFor(message.tabId);
-      if (current !== before || (await inspect(message.tabId)).title !== title) throw new Error("La page a changé pendant le téléchargement. Relance la recherche.");
+      if (current !== before || (await inspect(message.tabId)).title !== title) throw new Error("The page changed during the download. Search again.");
       current.imported = [result.track, ...(current.imported || []).filter(t => (t.provider !== result.track.provider || t.fileId !== result.track.fileId))].slice(0,3);
       persist(message.tabId);
       return {...result, page:await inspect(message.tabId)};
@@ -238,14 +238,14 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (message.action === "video_download_start") return downloadVideo(message.tabId, message.url, message.subtitle ?? "off");
     if (message.action === "video_download_cancel") return native({action:"video_download_cancel"});
     if (["sd_configure", "sd_search", "sd_apply", "os_configure", "os_search", "os_apply", "status", "scan", "select", "pair_begin", "pair_finish", "pair_cancel", "pair_forget", "toggle", "stop", "seek", "subtitle_sync", "subtitle_auto_start", "subtitle_auto_cancel"].includes(message.action)) {
-      if (message.action === 'subtitle_auto_start' && (typeof message.session !== 'string' || !Number.isInteger(message.index) || message.index < 0)) throw new Error('Piste de sous-titres invalide.');
-      if (message.action === 'subtitle_sync' && (typeof message.offset !== 'number' || !Number.isFinite(message.offset) || Math.abs(message.offset) > 600 || !Number.isInteger(message.index) || typeof message.session !== 'string')) throw new Error('Réglage de sous-titres invalide.');
-      if (message.action === 'seek' && (typeof message.position !== 'number' || !Number.isFinite(message.position) || message.position < 0)) throw new Error('Position de lecture invalide.');
+      if (message.action === 'subtitle_auto_start' && (typeof message.session !== 'string' || !Number.isInteger(message.index) || message.index < 0)) throw new Error('Invalid subtitle track.');
+      if (message.action === 'subtitle_sync' && (typeof message.offset !== 'number' || !Number.isFinite(message.offset) || Math.abs(message.offset) > 600 || !Number.isInteger(message.index) || typeof message.session !== 'string')) throw new Error('Invalid subtitle setting.');
+      if (message.action === 'seek' && (typeof message.position !== 'number' || !Number.isFinite(message.position) || message.position < 0)) throw new Error('Invalid playback position.');
       const result = await native(message);
       if (message.action === "stop" && message.tabId) chrome.action.setBadgeText({tabId: message.tabId, text: ""});
       return result;
     }
-    throw new Error("Commande inconnue.");
+    throw new Error("Unknown command.");
   })().then(result => respond({ok: true, result}), error => respond({ok: false, error: error.message}));
   return true;
 });

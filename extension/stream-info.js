@@ -30,10 +30,10 @@ export function parseManifest(body, url) {
 }
 export function describeStream(candidate) {
   const i = candidate.info || {};
-  const quality = i.height ? `${i.height >= 2160 ? '4K · ' : ''}${i.height}p` : 'qualité non précisée';
-  const sound = i.role === 'audio' ? 'audio seul' : i.audio === true ? 'image + son' : i.audio === false ? 'vidéo seule' : 'son à vérifier';
-  const label = i.role === 'master' ? `Auto · ${i.height ? `jusqu’à ${quality}` : 'master'} · ${sound}` : `${candidate.kind.toUpperCase()} · ${i.role === 'audio' ? 'audio seul' : `${quality} · ${sound}`}`;
-  const details = [i.role === 'master' ? 'Flux principal (master) : adapte automatiquement la qualité.' : i.externalAudio ? 'Son séparé : choisis le flux principal (master) pour avoir l’image et le son.' : i.role === 'audio' ? 'Piste sonore uniquement.' : i.role === 'playlist' || !candidate.info ? 'Cette source ne précise pas sa qualité ni ses pistes audio.' : 'Variante à qualité fixe.', i.qualities?.length ? `Qualités : ${i.qualities.map(h => `${h}p`).join(', ')}.` : '', i.bitrate ? `${(i.bitrate / 1e6).toFixed(1)} Mb/s` : '', i.fps ? `${i.fps} images/s` : '', i.languages?.length ? `Audio : ${[...new Set(i.languages)].join(', ')}` : '', i.codecs?.length ? `Codecs : ${i.codecs.join(', ')}` : ''].filter(Boolean).join(' ');
+  const quality = i.height ? `${i.height >= 2160 ? '4K · ' : ''}${i.height}p` : 'quality unspecified';
+  const sound = i.role === 'audio' ? 'audio only' : i.audio === true ? 'video + audio' : i.audio === false ? 'video only' : 'audio unconfirmed';
+  const label = i.role === 'master' ? `Auto · ${i.height ? `up to ${quality}` : 'master'} · ${sound}` : `${candidate.kind.toUpperCase()} · ${i.role === 'audio' ? 'audio only' : `${quality} · ${sound}`}`;
+  const details = [i.role === 'master' ? 'Master stream. Adjusts quality automatically.' : i.externalAudio ? 'Separate audio. Choose the master stream for video and audio.' : i.role === 'audio' ? 'Audio track only.' : i.role === 'playlist' || !candidate.info ? 'This source does not declare its quality or audio tracks.' : 'Fixed quality variant.', i.qualities?.length ? `Qualities ${i.qualities.map(h => `${h}p`).join(', ')}.` : '', i.bitrate ? `${(i.bitrate / 1e6).toFixed(1)} Mb/s` : '', i.fps ? `${i.fps} fps` : '', i.languages?.length ? `Audio : ${[...new Set(i.languages)].join(', ')}` : '', i.codecs?.length ? `Codecs : ${i.codecs.join(', ')}` : ''].filter(Boolean).join(' ');
   return {label, details};
 }
 export function metadataRank(info = {}) {

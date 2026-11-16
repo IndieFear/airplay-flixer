@@ -7,7 +7,7 @@ CUE = re.compile(r'^(?P<a>(?:\d+:)?\d{2}:\d{2}[.,]\d{3})(?P<arrow>\s+-->\s+)(?P<
 
 def offset_value(value):
     if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not -600 <= value <= 600:
-        raise ValueError('Le décalage doit être compris entre −600 et +600 secondes.')
+        raise ValueError('The offset must be between −600 and +600 seconds.')
     return round(float(value),3)
 
 

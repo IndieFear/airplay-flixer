@@ -29,7 +29,7 @@ def choose_manifest(text, source, *, highest_quality=False):
         variants.append((a, urljoin(source, target), width, height))
     if not variants:
         if '#EXT-X-STREAM-INF:' in text:
-            raise ValueError('Aucune variante vidéo exploitable dans ce master HLS.')
+            raise ValueError('No usable video variant in this HLS master.')
         return text, {}
 
     def score(v):

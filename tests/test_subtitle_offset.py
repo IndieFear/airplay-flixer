@@ -39,7 +39,7 @@ class ReloadTests(unittest.IsolatedAsyncioTestCase):
         self.c.atv=MagicMock();self.c.atv.remote_control.stop=AsyncMock();self.c.atv.close.return_value=set()
         self.c.timeline=Timeline(lambda:100)
         self.c.timeline.update(position=137,duration=1000,state='paused')
-        tracks=[{'content':'WEBVTT\n\n00:00:10.000 --> 00:00:12.000\nA\n','label':'Piste 1','language':'fr'},{'content':'WEBVTT\n\n00:00:10.000 --> 00:00:12.000\nB\n','label':'Piste 2','language':'fr'}]
+        tracks=[{'content':'WEBVTT\n\n00:00:10.000 --> 00:00:12.000\nA\n','label':'Track 1','language':'fr'},{'content':'WEBVTT\n\n00:00:10.000 --> 00:00:12.000\nB\n','label':'Track 2','language':'fr'}]
         self.media=MediaSession(MagicMock(),{'url':'https://example.test/master.m3u8','kind':'hls','subtitles':tracks},'http://192.168.1.2:1234')
         for i,t in enumerate(tracks):self.media.cache_subtitle(i,to_webvtt(t['content'],126000))
         self.c.media=self.media

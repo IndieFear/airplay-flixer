@@ -68,7 +68,7 @@ def main():
     os.environ['PYINSTALLER_CONFIG_DIR'] = str(ROOT / 'build/pyinstaller-cache')
     manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
     if not manifest.get('key'):
-        raise SystemExit('La clé publique stable de l’extension est absente.')
+        raise SystemExit('The stable extension public key is missing.')
     digest = hashlib.sha256(base64.b64decode(manifest['key'])).hexdigest()[:32]
     identifier = ''.join(chr(ord('a') + int(n, 16)) for n in digest)
     DIST.mkdir(exist_ok=True)
@@ -95,7 +95,7 @@ def main():
     shutil.copy2(ROOT / 'README.md', resources / 'README.md')
     (resources / 'extension-id.txt').write_text(identifier + '\n')
     executable = contents / 'MacOS/AirplayFlixer'
-    run('/usr/bin/swiftc', '-O', '-module-cache-path', ROOT / 'build/swift-cache', ROOT / 'native/MenuBar.swift', ROOT / 'native/PlaybackPanel.swift', '-o', executable, '-framework', 'AppKit')
+    run('/usr/bin/swiftc', '-O', '-target', f'{platform.machine()}-apple-macos13.0', '-module-cache-path', ROOT / 'build/swift-cache', ROOT / 'native/MenuBar.swift', ROOT / 'native/PlaybackPanel.swift', '-o', executable, '-framework', 'AppKit')
     minimum = minimum_macos(executable, resources / 'engine/_internal/Python')
     info = {
         'CFBundleIdentifier': 'com.airplay-flixer.app', 'CFBundleName': 'Airplay Flixer',
@@ -103,7 +103,7 @@ def main():
         'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': manifest['version'], 'CFBundleVersion': '1',
         'CFBundleIconFile': 'AirplayFlixer.icns',
         'LSUIElement': True, 'LSMinimumSystemVersion': minimum, 'NSHighResolutionCapable': True,
-        'NSLocalNetworkUsageDescription': 'Airplay Flixer recherche ton Apple TV et lui transmet les vidéos que tu choisis de caster.',
+        'NSLocalNetworkUsageDescription': 'Airplay Flixer finds your Apple TV and sends the videos you choose to cast.',
         'NSBonjourServices': ['_airplay._tcp', '_mediaremotetv._tcp', '_companion-link._tcp', '_raop._tcp'],
     }
     with (contents / 'Info.plist').open('wb') as stream:
@@ -131,15 +131,15 @@ def main():
     share.mkdir()
     shutil.move(app, share / app.name)
     shutil.copytree(extension, share / extension.name)
-    copy_notices(share / 'Licences tierces')
+    copy_notices(share / 'Third-party notices')
     architecture = platform.machine()
     chip = 'Apple Silicon' if architecture == 'arm64' else 'Intel'
     guide = (ROOT / 'scripts/share-guide.html').read_text()
     guide = guide.replace('@VERSION@', manifest['version']).replace('@MACOS@', minimum).replace('@CHIP@', chip)
-    (share / 'Commencer ici.html').write_text(guide)
+    (share / 'Start here.html').write_text(guide)
     share_zip = DIST / f"Airplay-Flixer-{manifest['version']}-Mac-{architecture}.zip"
     run('/usr/bin/ditto', '-c', '-k', '--norsrc', '--keepParent', share, share_zip)
-    print(f'\nApplication : {APP}\nExtension : {extension}\nIdentifiant : {identifier}\nArchive à partager : {share_zip}')
+    print(f'\nApplication : {APP}\nExtension : {extension}\nExtension ID {identifier}\nSharing archive {share_zip}')
     staging.cleanup()
 
 

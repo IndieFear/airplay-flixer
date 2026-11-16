@@ -7,7 +7,7 @@ LOG = logging.getLogger(__name__)
 
 
 class SleepGuard:
-    def __init__(self, reason='Airplay Flixer - diffusion en cours'):
+    def __init__(self, reason='Airplay Flixer - casting in progress'):
         self.identifier = None
         self.iokit = None
         self.reason = reason

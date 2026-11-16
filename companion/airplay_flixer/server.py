@@ -60,7 +60,7 @@ class Companion:
         self.media = None
         self.received = asyncio.Event()
         self.confirmed = False
-        self.message = 'Prêt à caster'
+        self.message = 'Ready to cast'
         self.error = None
         self.title = None
         self.token = secrets.token_urlsafe(32)
@@ -82,7 +82,7 @@ class Companion:
         )
 
     async def scan(self):
-        self.message = 'Recherche des appareils AirPlay et DLNA…'
+        self.message = 'Searching for AirPlay and DLNA devices…'
         airplay, dlna = await asyncio.gather(
             pyatv.scan(asyncio.get_running_loop(), timeout=5, storage=self.storage),
             discover_dlna(self.client), return_exceptions=True)
@@ -90,19 +90,19 @@ class Companion:
         if isinstance(airplay, BaseException):
             if isinstance(airplay, asyncio.CancelledError):
                 raise airplay
-            warnings.append('Recherche AirPlay indisponible.')
+            warnings.append('AirPlay search unavailable.')
         else:
             self.devices = {config.identifier or str(config.address): config for config in airplay if config.get_service(Protocol.AirPlay)}
         if isinstance(dlna, BaseException):
             if isinstance(dlna, asyncio.CancelledError):
                 raise dlna
-            warnings.append('Recherche DLNA indisponible.')
+            warnings.append('DLNA search unavailable.')
             self.dlna_devices = []
         else:
             self.dlna_devices = dlna
         self.discovery_warning = ' '.join(warnings) or None
         count = len(self.devices) + len(self.dlna_devices)
-        self.message = f'{len(self.devices)} AirPlay · {len(self.dlna_devices)} DLNA' if count else 'Aucun appareil trouvé — vérifie le réseau local et le partage DLNA de la TV.'
+        self.message = f'{len(self.devices)} AirPlay · {len(self.dlna_devices)} DLNA' if count else 'No devices found. Check the local network and DLNA sharing on the TV.'
         self.error = None
         return self.status()
 
@@ -125,7 +125,7 @@ class Companion:
 
     async def pair_forget(self, device_id):
         if not device_id or device_id != self.settings.get('selected') or str(device_id).startswith('dlna:'):
-            raise ValueError('Choisis d’abord l’Apple TV à oublier dans les paramètres.')
+            raise ValueError('First select the Apple TV to forget in Settings.')
         ids = self.selected_identifiers()
         if self.pairing:
             await self.pairing.close()
@@ -145,7 +145,7 @@ class Companion:
         if path.exists():
             path.chmod(0o600)
         self.error = None
-        self.message = 'Association locale oubliée — tu peux appairer à nouveau cette Apple TV'
+        self.message = 'Local pairing removed. You can pair this Apple TV again.'
         return self.status()
 
     def status(self):
@@ -168,7 +168,7 @@ class Companion:
             'videoDownload': self.download.status(),
             'videoDownloadSubtitles': True,
             'subtitleImportable': bool(self.atv and self.media and (self.media.directory or self.media.kind == 'hls' or '.m3u8' in urlsplit(self.media.source).path.lower())),
-            'subtitleTracks': [{'index':i, 'label':t.get('label') or f'Piste {i+1}', 'language':t.get('language','und'), 'offset':t.get('offset',0), 'default':i == self.media.default_subtitle} for i,t in enumerate(self.media.subtitle_tracks)] if self.media and self.atv else [],
+            'subtitleTracks': [{'index':i, 'label':t.get('label') or f'Track {i+1}', 'language':t.get('language','und'), 'offset':t.get('offset',0), 'default':i == self.media.default_subtitle} for i,t in enumerate(self.media.subtitle_tracks)] if self.media and self.atv else [],
             **self.timeline.snapshot(),
             'stream': self.media.telemetry.snapshot() if self.media and self.play_task and not self.play_task.done() else None,
             'seekable': bool(self.play_task and not self.play_task.done() and self.timeline.duration > 0 and (not self.dlna or self.dlna.seekable) and not (self.dlna and self.media and self.media.compat_mime)),
@@ -186,7 +186,7 @@ class Companion:
                 self.select(next(iter(self.devices)))
                 key = self.settings['selected']
             else:
-                raise ValueError('Choisis ton Apple TV dans la barre de menus, puis associe-la.')
+                raise ValueError('Select your Apple TV in the menu bar, then pair it.')
         self.settings['address'] = str(self.devices[key].address)
         self.settings['selectedName'] = self.devices[key].name
         return self.devices[key]
@@ -195,14 +195,14 @@ class Companion:
         if isinstance(key, str) and key.startswith('dlna:'):
             device = next((d for d in self.dlna_devices if d['id'] == key), None)
             if not device:
-                raise ValueError('Appareil DLNA introuvable. Relance la recherche.')
+                raise ValueError('DLNA device not found. Scan again.')
             self.settings.update(selected=key, selectedName=device['name'], address=device['address'], selectedProtocol='dlna', selectedIdentifiers=[])
             write_json(self.folder / 'preferences.json', self.settings)
             self.error = None
-            self.message = 'Destination DLNA : ' + device['name']
+            self.message = 'DLNA destination ' + device['name']
             return
         if key not in self.devices:
-            raise ValueError('Apple TV introuvable. Lance une nouvelle recherche.')
+            raise ValueError('Apple TV not found. Scan again.')
         config = self.devices[key]
         self.settings.update(selected=key, selectedName=config.name, address=str(config.address), selectedProtocol='airplay', selectedIdentifiers=[i for i in config.all_identifiers if isinstance(i, str)])
         write_json(self.folder / 'preferences.json', self.settings)
@@ -211,7 +211,7 @@ class Companion:
 
     async def pair_begin(self):
         if str(self.settings.get("selected", "")).startswith("dlna:"):
-            raise ValueError("Les appareils DLNA ne nécessitent pas d’appairage AirPlay.")
+            raise ValueError("DLNA devices do not require AirPlay pairing.")
         self.error = None
         if self.pairing:
             await self.pairing.close()
@@ -219,7 +219,7 @@ class Companion:
         config = await self.configuration()
         service = config.get_service(Protocol.AirPlay)
         if service.pairing == PairingRequirement.NotNeeded:
-            self.message = 'Cette Apple TV n’exige pas de code AirPlay'
+            self.message = 'This Apple TV does not require an AirPlay code'
             return {'pinRequired': False}
         self.pairing = await pyatv.pair(config, Protocol.AirPlay, asyncio.get_running_loop(), storage=self.storage, name='Airplay Flixer')
         try:
@@ -228,23 +228,23 @@ class Companion:
             await self.pairing.close()
             self.pairing = None
             raise
-        self.message = 'Entre le code affiché sur l’Apple TV'
+        self.message = 'Enter the code displayed on the Apple TV'
         return {'pinRequired': True}
 
     async def pair_finish(self, pin):
         if not self.pairing or not isinstance(pin, str) or not pin.isdigit() or len(pin) != 4:
-            raise ValueError('Entre le code à 4 chiffres affiché sur l’Apple TV.')
+            raise ValueError('Enter the 4-digit code displayed on the Apple TV.')
         pairing = self.pairing
         try:
             pairing.pin(int(pin))
             await pairing.finish()
             if not pairing.has_paired:
-                raise ValueError('Appairage refusé. Vérifie le code et réessaie.')
+                raise ValueError('Pairing rejected. Check the code and try again.')
             await self.storage.save()
             path = self.folder / 'credentials.json'
             if path.exists():
                 path.chmod(0o600)
-            self.message = 'Apple TV associée — prête à caster'
+            self.message = 'Apple TV paired and ready to cast'
             self.error = None
         finally:
             await pairing.close()
@@ -284,24 +284,24 @@ class Companion:
             self.media = None
         self.confirmed = False
         self.title = None
-        self.message = 'Prêt à caster'
+        self.message = 'Ready to cast'
         self.playback_url = None
         self.timeline = Timeline()
 
     async def cast(self, payload):
         if not isinstance(payload, dict):
-            raise ValueError('Média invalide.')
+            raise ValueError('Invalid media.')
         if str(self.settings.get('selected', '')).startswith('dlna:'):
             return await self.cast_dlna(payload)
         config = await self.configuration()
         service = config.get_service(Protocol.AirPlay)
         if not service.credentials and service.pairing in {PairingRequirement.Mandatory, PairingRequirement.Optional}:
-            raise ValueError('Associe d’abord cette Apple TV depuis la barre de menus du Mac.')
+            raise ValueError('First pair this Apple TV from the Mac menu bar.')
         await self.stop()
-        self.message = 'Préparation du média…'
+        self.message = 'Preparing media…'
         self.error = None
         self.received.clear()
-        self.title = str(payload.get('title') or 'Vidéo web')[:200]
+        self.title = str(payload.get('title') or 'Web video')[:200]
         route = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             route.connect((str(config.address), 7000))
@@ -316,11 +316,11 @@ class Companion:
             self.atv = await asyncio.wait_for(pyatv.connect(config, asyncio.get_running_loop(), storage=self.storage), 15)
             position = float(payload.get('position') or 0)
             if not math.isfinite(position) or not 0 <= position <= 86400:
-                raise ValueError('Position de lecture invalide.')
+                raise ValueError('Invalid playback position.')
             self.playback_url = url
             self.timeline.update(position=position, duration=self.media.duration, state='loading')
             self.play_task = asyncio.create_task(self.protected_playback(self.play, url, position))
-            self.message = 'Connexion AirPlay…'
+            self.message = 'Connecting to AirPlay…'
             return self.status()
         except Exception:
             await self.stop()
@@ -333,17 +333,17 @@ class Companion:
             self.dlna_devices = await discover_dlna(self.client)
             device = next((d for d in self.dlna_devices if d['id'] == key), None)
         if not device:
-            raise ValueError('La TV DLNA est introuvable. Allume-la puis relance la recherche.')
+            raise ValueError('DLNA TV not found. Turn it on and scan again.')
         position = seconds(payload.get('position') or 0)
         if position is None or position > 86400:
-            raise ValueError('Position de lecture invalide.')
+            raise ValueError('Invalid playback position.')
         if payload.get('kind') == 'dash':
-            raise ValueError('Le DASH n’est pas pris en charge en DLNA. Choisis une source MP4 ou HLS.')
+            raise ValueError('DASH is not supported over DLNA. Choose an MP4 or HLS source.')
         await self.stop()
         self.settings.update(address=device['address'], selectedName=device['name'])
-        self.message = 'Préparation de la diffusion DLNA…'
+        self.message = 'Preparing DLNA playback…'
         self.error = None
-        self.title = str(payload.get('title') or 'Vidéo web')[:200]
+        self.title = str(payload.get('title') or 'Web video')[:200]
         self.received.clear()
         route = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
@@ -355,9 +355,9 @@ class Companion:
         # Keep native tracks in the stream and explain the external-track limit.
         subtitle = payload.get('subtitle')
         if subtitle and not subtitle.get('off'):
-            self.playback_warning = 'DLNA : les sous-titres externes sélectionnés ne sont pas transmis. Utilise les pistes intégrées sur la TV.'
+            self.playback_warning = 'DLNA does not transmit the selected external subtitles. Use embedded tracks on the TV.'
         if subtitle and subtitle.get('off'):
-            self.playback_warning = 'DLNA : désactive les sous-titres intégrés depuis le lecteur de la TV si nécessaire.'
+            self.playback_warning = 'DLNA. Turn off embedded subtitles in the TV player if needed.'
         self.media = MediaSession(self.client, {**payload, 'subtitle': None, 'subtitles': [], 'targetProtocol': 'dlna'}, f'http://{self.local_ip}:{self.media_port}')
         self.dlna = DlnaPlayer(self.client, device)
         try:
@@ -385,12 +385,12 @@ class Companion:
             if compatible:
                 height = self.media.compat_info.get('height')
                 quality = f' {height}p' if height else ''
-                notice = f'Mode compatible DLNA : H.264{quality} + AAC dans un flux MPEG-TS. Déplacement indisponible pendant cette diffusion.'
+                notice = f'DLNA compatibility mode. H.264{quality} + AAC in an MPEG-TS stream. Seeking is unavailable during this cast.'
                 self.playback_warning = notice + (' ' + self.playback_warning if self.playback_warning else '')
             self.playback_url = url
             self.timeline.update(position=position if compatible else 0, duration=self.media.duration, state='loading')
             self.play_task = asyncio.create_task(self.protected_playback(self.monitor_dlna, 0 if compatible else position))
-            self.message = 'Chargement sur ' + device['name']
+            self.message = 'Loading on ' + device['name']
             return self.status()
         except BaseException:
             await self.stop()
@@ -406,26 +406,26 @@ class Companion:
                     info = await player.command('GetTransportInfo')
                     remote_state = info.get('CurrentTransportState')
                     if info.get('CurrentTransportStatus') == 'ERROR_OCCURRED':
-                        raise ValueError('La TV n’arrive pas à lire ce flux DLNA. Essaie une source MP4.')
+                        raise ValueError('The TV cannot play this DLNA stream. Try an MP4 source.')
                     if remote_state in {'PLAYING', 'PAUSED_PLAYBACK'}:
                         self.confirmed = True
                         self.timeline.update(state='paused' if remote_state == 'PAUSED_PLAYBACK' else 'playing')
-                        self.message = ('En pause sur ' if remote_state == 'PAUSED_PLAYBACK' else 'Lecture sur ') + player.device['name']
+                        self.message = ('Paused on ' if remote_state == 'PAUSED_PLAYBACK' else 'Playing on ') + player.device['name']
                         if initial_position:
                             try:
                                 await player.seek(initial_position)
                                 self.timeline.update(position=initial_position)
                             except ValueError:
-                                self.playback_warning = 'La TV ne permet pas de reprendre à la position du navigateur ; lecture depuis le début.'
+                                self.playback_warning = 'The TV cannot resume at the browser position. Playing from the beginning.'
                             initial_position = 0
                     elif remote_state in {'STOPPED', 'NO_MEDIA_PRESENT'}:
                         if self.confirmed:
-                            self.message = 'Lecture terminée'
+                            self.message = 'Playback ended'
                             break
                         if time.monotonic() - started > 25:
-                            raise ValueError('La TV n’a pas démarré ce flux DLNA. Essaie une source MP4 ; ce téléviseur peut refuser le HLS.')
+                            raise ValueError('The TV did not start this DLNA stream. Try an MP4 source. This TV may reject HLS.')
                     if not self.confirmed and time.monotonic() - started > 35:
-                        raise ValueError('Le chargement DLNA a pris trop de temps. Essaie une autre source vidéo.')
+                        raise ValueError('DLNA loading timed out. Try another video source.')
                     try:
                         position = await player.command('GetPositionInfo')
                         remote_position = time_value(position.get('RelTime'))
@@ -439,7 +439,7 @@ class Companion:
                     failures += 1
                     if failures >= 3:
                         self.error = str(error)
-                        self.message = 'Lecture DLNA interrompue'
+                        self.message = 'DLNA playback interrupted'
                         break
                 await asyncio.sleep(2)
         finally:
@@ -462,15 +462,15 @@ class Companion:
             # play_url must remain alive for the whole movie: do NOT await it in
             # the short-lived Chrome Native Messaging process or RPC handler.
             await play_url(self.atv, url, position=position, timeline=self.timeline, title=self.title, artwork=self.media.artwork if self.media else None)
-            self.message = 'Lecture terminée'
+            self.message = 'Playback ended'
         except asyncio.CancelledError:
             raise
         except Exception as error:
             import re
             detail = re.sub(r'https?://\S+', '[media]', str(error))[:300]
             LOG.warning('AirPlay failed: %s (%s)', type(error).__name__, detail)
-            self.error = 'L’Apple TV a refusé ou interrompu la lecture. Vérifie la source et l’appairage.'
-            self.message = 'Lecture interrompue'
+            self.error = 'Apple TV rejected or interrupted playback. Check the source and pairing.'
+            self.message = 'Playback interrupted'
         finally:
             await self.cancel_auto_sync()
             if pauser:
@@ -492,12 +492,12 @@ class Companion:
                     if timeline.controller:
                         response = await timeline.controller._send_url_command({'type':'setRate','rate':0.0})
                         if not 200 <= response.code < 300:
-                            raise ValueError('Pause refusée')
+                            raise ValueError('Pause rejected')
                     else:
                         await self.atv.remote_control.pause()
                     timeline.update(state='paused')
                 except Exception:
-                    self.playback_warning = 'Le décalage est appliqué ; la remise en pause automatique a échoué. Mets la vidéo en pause si nécessaire.'
+                    self.playback_warning = 'The offset was applied. Automatic pause failed. Pause the video if needed.'
                 return
             await asyncio.sleep(.1)
 
@@ -509,17 +509,17 @@ class Companion:
         if clear:
             self.auto_sync = {'state':'idle'}
         elif self.auto_sync.get('state') == 'running':
-            self.auto_sync = {**self.auto_sync, 'state':'cancelled', 'message':'Analyse annulée.'}
+            self.auto_sync = {**self.auto_sync, 'state':'cancelled', 'message':'Analysis cancelled.'}
 
     async def start_auto_sync(self, session, index):
         if not self.atv or not self.media or not self.play_task or self.play_task.done():
-            raise ValueError('Lance une diffusion Apple TV avec des sous-titres externes avant l’analyse.')
+            raise ValueError('Start casting to Apple TV with external subtitles before analyzing.')
         if session != self.media.id or isinstance(index,bool) or not isinstance(index,int) or not 0 <= index < len(self.media.subtitle_tracks):
-            raise ValueError('La piste ou la diffusion a changé. Actualise le contrôleur.')
+            raise ValueError('The track or casting session changed. Refresh the controller.')
         await self.cancel_auto_sync(clear=True)
         media = self.media
         identifier = secrets.token_urlsafe(8)
-        self.auto_sync = {'id':identifier,'session':session,'index':index,'state':'running','phase':'subtitle','message':'Préparation de l’analyse locale…'}
+        self.auto_sync = {'id':identifier,'session':session,'index':index,'state':'running','phase':'subtitle','message':'Preparing local analysis…'}
         self.auto_task = asyncio.create_task(self.run_auto_sync(media,index,identifier,self.timeline.current()))
         return self.status()
 
@@ -533,30 +533,30 @@ class Companion:
             log_auto_sync_result(result)
             if current():
                 if not self.play_task or self.play_task.done():
-                    self.auto_sync.update(state='cancelled',message='La diffusion est terminée ; résultat non appliqué.')
+                    self.auto_sync.update(state='cancelled',message='The cast ended. Result not applied.')
                 else:
                     self.auto_sync.update(result)
         except asyncio.CancelledError:
             raise
         except Exception as error:
             LOG.warning('Subtitle auto-sync failed: %s',type(error).__name__)
-            if current():self.auto_sync.update(state='failed',message=str(error) if isinstance(error,ValueError) else 'L’analyse automatique a échoué. Le réglage manuel reste disponible.')
+            if current():self.auto_sync.update(state='failed',message=str(error) if isinstance(error,ValueError) else 'Automatic analysis failed. Manual adjustment is available.')
 
     async def import_subtitle(self, session, identifier, provider="opensubtitles"):
         if not self.play_task or self.play_task.done() or not self.atv or not self.media or self.media.id != session:
-            raise ValueError('La diffusion a changé. Relance la sélection du sous-titre.')
+            raise ValueError('The cast changed. Select the subtitle again.')
         media = self.media
         if not self.status()['subtitleImportable']:
-            raise ValueError('Cette source nécessite un nouveau lancement pour ajouter des sous-titres. La piste est prête dans l’extension pour le prochain lancement.')
+            raise ValueError('This source needs to be cast again to add subtitles. The track is ready in the extension for the next cast.')
         service = self.subdl if provider == 'subdl' else self.opensubtitles
         loaded = service.downloads.get(identifier)
         if not loaded:
-            raise ValueError('Cette piste n’est plus en mémoire. Télécharge-la à nouveau.')
+            raise ValueError('This track is no longer cached. Download it again.')
         track = loaded['track']
         index = next((i for i,t in enumerate(media.subtitle_tracks) if t.get('provider') == provider and t.get('fileId') == track['fileId']), None)
         if index is None:
             if len(media.subtitle_tracks)>=500:
-                raise ValueError('La limite de pistes de cette diffusion est atteinte.')
+                raise ValueError('The track limit for this cast has been reached.')
             timestamp = media.subtitle_timestamp
             if not media.subtitle_tracks:
                 local = f'http://127.0.0.1:{self.media_port}/media/{media.id}'
@@ -575,12 +575,12 @@ class Companion:
     async def sync_subtitle(self, session, index, offset):
         offset = offset_value(offset)
         if not self.atv or not self.media or not self.play_task or self.play_task.done():
-            raise ValueError('Aucune diffusion Apple TV active avec des sous-titres externes.')
+            raise ValueError('No active Apple TV cast with external subtitles.')
         media = self.media
         if session != media.id:
-            raise ValueError('La diffusion a changé. Actualise le contrôleur avant de recaler les sous-titres.')
+            raise ValueError('The cast changed. Refresh the controller before adjusting subtitles.')
         if isinstance(index,bool) or not isinstance(index,int) or not 0 <= index < len(media.subtitle_tracks):
-            raise ValueError('Choisis une piste de sous-titres externe à recaler.')
+            raise ValueError('Choose an external subtitle track to adjust.')
         if offset == media.subtitle_tracks[index].get('offset',0) and index == media.default_subtitle:
             return self.status()
         await self.cancel_auto_sync()
@@ -599,7 +599,7 @@ class Companion:
         self.timeline.update(position=position,state='loading')
         self.confirmed = False
         self.error = None
-        self.message = 'Application du décalage des sous-titres…'
+        self.message = 'Applying subtitle offset…'
         self.playback_url = f'{media.base}/master.m3u8?subrev={media.subtitle_revision}'
         self.play_task = asyncio.create_task(self.protected_playback(self.play, self.playback_url, position, paused=paused))
         return self.status()
@@ -607,20 +607,20 @@ class Companion:
     async def seek(self, position):
         target = seconds(position)
         if target is None:
-            raise ValueError('Position de lecture invalide.')
+            raise ValueError('Invalid playback position.')
         if not (self.atv or self.dlna) or not self.playback_url or not self.play_task or self.play_task.done():
-            raise ValueError('Aucune lecture AirPlay en cours.')
+            raise ValueError('No AirPlay playback in progress.')
         if self.dlna and self.media and self.media.compat_mime:
-            raise ValueError('Le déplacement n’est pas disponible dans le flux DLNA compatible à la volée.')
+            raise ValueError('Seeking is unavailable in the live DLNA compatibility stream.')
         if not self.timeline.duration:
-            raise ValueError('La durée du média est encore inconnue.')
+            raise ValueError('The media duration is still unknown.')
         target = min(target, max(0, self.timeline.duration - 0.5))
         if self.media and self.media.directory:
             import re
             playlist = self.media.directory / 'video.m3u8'
             prepared = sum(float(n) for n in re.findall(r'#EXTINF:([\d.]+)', playlist.read_text())) if playlist.exists() else 0
             if target > prepared:
-                raise ValueError('Cette partie du média est encore en préparation. Réessaie dans un instant.')
+                raise ValueError('This part of the media is still being prepared. Try again shortly.')
         # Seek through the active remote session. Recreating play_url tears down
         # AirPlay and visibly reopens the player for every timeline click.
         paused = self.timeline.state == 'paused'
@@ -633,9 +633,9 @@ class Companion:
             LOG.warning('Seek rejected: %s', type(error).__name__)
             if self.dlna and isinstance(error, ValueError):
                 raise
-            raise ValueError('Le déplacement dans la lecture en cours a été refusé. La vidéo reste en cours ; vérifie l’appairage de la télécommande Apple TV.') from error
+            raise ValueError('Seeking was rejected. Check the Apple TV remote pairing.') from error
         self.timeline.update(position=target, state='paused' if paused else 'playing')
-        self.message = 'Position mise à jour'
+        self.message = 'Playback position updated'
         self.error = None
         return self.status()
 
@@ -648,17 +648,17 @@ class Companion:
                 continue
             if self.atv and self.play_task and not self.play_task.done():
                 if self.received.is_set():
-                    self.message = 'Flux envoyé à l’Apple TV'
+                    self.message = 'Stream sent to Apple TV'
                     try:
                         playing = await asyncio.wait_for(self.atv.metadata.playing(), 2)
                         if playing.device_state == DeviceState.Playing:
                             self.confirmed = True
-                            self.message = 'Lecture sur ' + self.settings.get('selectedName', 'Apple TV')
+                            self.message = 'Playing on ' + self.settings.get('selectedName', 'Apple TV')
                     except Exception:
                         pass
                 if self.timeline.started:
                     self.confirmed = True
-                    self.message = ('En pause sur ' if self.timeline.state == 'paused' else 'Lecture sur ') + self.settings.get('selectedName', 'Apple TV')
+                    self.message = ('Paused on ' if self.timeline.state == 'paused' else 'Playing on ') + self.settings.get('selectedName', 'Apple TV')
                 if self.media and self.media.error:
                     self.error = self.media.error
             elif self.media and not self.action_lock.locked() and time.monotonic() - self.media.last_access > 60:
@@ -690,7 +690,7 @@ class Companion:
             if action == 'select':
                 key = message.get('id')
                 if key not in self.devices and not any(d['id'] == key for d in self.dlna_devices):
-                    raise ValueError('Appareil introuvable. Relance la recherche.')
+                    raise ValueError('Device not found. Scan again.')
                 if self.play_task and not self.play_task.done():
                     await self.stop()
                 self.select(message.get('id'))
@@ -728,17 +728,17 @@ class Companion:
                     self.timeline.update(state='playing' if paused else 'paused')
                     return self.status()
                 if not self.atv:
-                    raise ValueError('Aucune lecture AirPlay en cours.')
+                    raise ValueError('No AirPlay playback in progress.')
                 if self.timeline.controller:
                     paused = self.timeline.state != 'paused'
                     response = await self.timeline.controller._send_url_command({'type': 'setRate', 'rate': 0.0 if paused else 1.0})
                     if not 200 <= response.code < 300:
-                        raise ValueError('L’Apple TV a refusé la commande Lecture / Pause.')
+                        raise ValueError('Apple TV rejected the Play / Pause command.')
                     self.timeline.update(state='paused' if paused else 'playing')
                 else:
                     await self.atv.remote_control.play_pause()
             else:
-                raise ValueError('Commande inconnue.')
+                raise ValueError('Unknown command.')
             return self.status()
 
     async def rpc(self, request):
@@ -751,21 +751,21 @@ class Companion:
         try:
             message = await request.json()
             if not isinstance(message, dict):
-                raise ValueError('Commande invalide.')
+                raise ValueError('Invalid command.')
             result = await asyncio.wait_for(self.dispatch(message), 85)
             return web.json_response({'ok': True, 'result': result})
         except Exception as error:
             LOG.warning('Command failed: %s', type(error).__name__)
             safe = str(error) if isinstance(error, ValueError) else {
-                'AuthenticationError': 'Appairage refusé. Associe à nouveau l’Apple TV.',
-                'PairingError': 'L’appairage a échoué. Relance « Associer l’Apple TV » et utilise le nouveau code affiché.',
-                'NotSupportedError': 'Cette commande ou ce format n’est pas pris en charge par l’Apple TV.',
-                'TimeoutError': 'L’Apple TV ne répond pas. Vérifie qu’elle est allumée sur le même réseau.',
-            }.get(type(error).__name__, 'Connexion impossible. Vérifie le réseau local et l’appairage de l’Apple TV.')
+                'AuthenticationError': 'Pairing rejected. Pair the Apple TV again.',
+                'PairingError': 'Pairing failed. Select “Pair Apple TV” again and use the new code.',
+                'NotSupportedError': 'Apple TV does not support this command or format.',
+                'TimeoutError': 'Apple TV is not responding. Check that it is on and connected to the same network.',
+            }.get(type(error).__name__, 'Cannot connect. Check the local network and Apple TV pairing.')
             action = str(message.get('action', '')) if isinstance(message, dict) else ''
             isolated = action.startswith(('os_', 'sd_', 'video_download_'))
             if isolated and not isinstance(error, ValueError):
-                safe = 'Impossible de gérer le téléchargement vidéo.' if action.startswith('video_download_') else 'La demande au catalogue de sous-titres a échoué. Réessaie ou vérifie sa configuration dans Paramètres.'
+                safe = 'Cannot manage the video download.' if action.startswith('video_download_') else 'The subtitle catalog request failed. Try again or check its configuration in Settings.'
             if not isolated:
                 self.error = safe
             return web.json_response({'ok': False, 'error': safe})
@@ -782,11 +782,11 @@ class Companion:
         except ValueError as error:
             if request.remote not in {'127.0.0.1','::1'}:
                 self.error = str(error)
-            raise web.HTTPBadGateway(text='Média indisponible.') from None
+            raise web.HTTPBadGateway(text='Media unavailable.') from None
         except (aiohttp.ClientError, TimeoutError):
             if request.remote not in {'127.0.0.1','::1'}:
-                self.error = 'Le serveur vidéo ne répond plus. Relance la vidéo dans Chrome.'
-            raise web.HTTPBadGateway(text='Média indisponible.') from None
+                self.error = 'The video server stopped responding. Restart the video in Chrome.'
+            raise web.HTTPBadGateway(text='Media unavailable.') from None
 
 
 async def serve():

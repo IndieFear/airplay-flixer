@@ -39,7 +39,7 @@ async def read_text_body(response):
     async for chunk in response.content.iter_chunked(64 * 1024):
         data.extend(chunk)
         if len(data) > MAX_TEXT:
-            raise ValueError('Manifeste ou sous-titres trop volumineux.')
+            raise ValueError('Manifest or subtitles too large.')
     return bytes(data).decode('utf-8-sig')
 
 
@@ -64,7 +64,7 @@ def to_webvtt(text: str, timestamp: int) -> str:
     text = text.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n')
     if not text.startswith('WEBVTT'):
         if not TIMING.search(text):
-            raise ValueError('Sous-titres non reconnus : utilise une piste SRT ou WebVTT.')
+            raise ValueError('Subtitles not recognized. Use an SRT or WebVTT track.')
         text = TIMING.sub(lambda m: f'{m[1]}.{m[2]} --> {m[3]}.{m[4]}', text)
         text = 'WEBVTT\n\n' + text.strip() + '\n'
     if 'X-TIMESTAMP-MAP=' not in text:
@@ -73,7 +73,7 @@ def to_webvtt(text: str, timestamp: int) -> str:
     return text
 
 
-def with_subtitles(playlist: str, subtitle_url: str | None, label='Français', language='fr', off=False) -> str:
+def with_subtitles(playlist: str, subtitle_url: str | None, label='French', language='fr', off=False) -> str:
     lines = playlist.splitlines()
     if not subtitle_url and not off:
         return playlist
@@ -81,7 +81,7 @@ def with_subtitles(playlist: str, subtitle_url: str | None, label='Français', l
     lines = [line for line in lines if not (line.startswith('#EXT-X-MEDIA:') and 'TYPE=SUBTITLES' in line)]
     lines = [re.sub(r',?SUBTITLES="[^"]*"', '', line).replace(':,', ':').rstrip(',') if line.startswith('#EXT-X-STREAM-INF:') else line for line in lines]
     if subtitle_url:
-        safe_label = re.sub(r'["\r\n]', '', label)[:80] or 'Sous-titres'
+        safe_label = re.sub(r'["\r\n]', '', label)[:80] or 'Subtitles'
         safe_language = re.sub(r'[^a-zA-Z0-9-]', '', language)[:20] or 'und'
         lines.insert(1, f'#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="flixer-subs",NAME="{safe_label}",LANGUAGE="{safe_language}",DEFAULT=YES,AUTOSELECT=YES,FORCED=NO,URI="{subtitle_url}"')
         lines = [line + ',SUBTITLES="flixer-subs"' if line.startswith('#EXT-X-STREAM-INF:') else line for line in lines]
@@ -99,7 +99,7 @@ class MediaSession:
         self.subtitle = payload.get('subtitle')
         candidates = payload.get('subtitles')
         if candidates is not None and (not isinstance(candidates, list) or len(candidates) > 500):
-            raise ValueError('Liste de sous-titres invalide ou trop volumineuse.')
+            raise ValueError('Invalid or oversized subtitle list.')
         self.subtitle_tracks = []
         if not (isinstance(self.subtitle, dict) and self.subtitle.get('off')):
             for track in candidates or ([self.subtitle] if isinstance(self.subtitle, dict) else []):
@@ -202,22 +202,22 @@ class MediaSession:
             target = response.headers.get('Location')
             response.release()
             if not target:
-                raise ValueError('Redirection du média invalide.')
+                raise ValueError('Invalid media redirect.')
             url = web_url(urljoin(url, target))
-        raise ValueError('Trop de redirections du média.')
+        raise ValueError('Too many media redirects.')
 
     async def fetch_text(self, url: str):
         response = await self.upstream(url)
         try:
             if response.status >= 400:
-                raise ValueError(f'Le serveur du média refuse la lecture (HTTP {response.status}). Relance la vidéo dans Chrome.')
+                raise ValueError(f'The media server refused playback (HTTP {response.status}). Restart the video in Chrome.')
             return await read_text_body(response), str(response.url)
         finally:
             response.close()
 
     def rewrite(self, text: str, source: str):
         if re.search(r'KEYFORMAT="(?!identity)[^"]+"|METHOD=SAMPLE-AES', text):
-            raise ValueError('Ce flux utilise une protection DRM incompatible avec ce relais.')
+            raise ValueError('This stream uses DRM protection unsupported by this relay.')
         self.telemetry.manifest(text, source)
         output = []
         master = '#EXT-X-STREAM-INF:' in text
@@ -235,20 +235,20 @@ class MediaSession:
         for _ in range(5):
             text, actual_url = await self.fetch_text(url)
             if not text.lstrip().startswith('#EXTM3U'):
-                raise ValueError('Manifeste HLS invalide.')
+                raise ValueError('Invalid HLS manifest.')
             if '#EXT-X-STREAM-INF:' not in text:
                 return text, actual_url
             selected, _ = choose_manifest(text, actual_url)
             variants = [line.strip() for line in selected.splitlines() if line.strip() and not line.startswith('#')]
             if not variants:
-                raise ValueError('Aucune variante vidéo dans le manifeste.')
+                raise ValueError('No video variant in the manifest.')
             url = urljoin(actual_url, variants[-1])
-        raise ValueError('Manifeste HLS imbriqué trop profondément.')
+        raise ValueError('HLS manifest nesting is too deep.')
 
     async def timestamp(self, local_url: str) -> int:
         probe = binary('ffprobe')
         if not probe:
-            raise ValueError('FFmpeg est nécessaire pour synchroniser les sous-titres externes. Installe-le avec brew install ffmpeg.')
+            raise ValueError('FFmpeg is required to sync external subtitles. Install it with brew install ffmpeg.')
         if self.kind == 'hls' and not self.directory:
             # A multivariant probe can encounter WebVTT/audio before any video
             # timestamp. Probe one actual video playlist, without subtitle groups.
@@ -272,18 +272,18 @@ class MediaSession:
             start = min(starts) if starts else min(packets) if packets else fallback if data.get('streams') else None
             if proc.returncode or start is None:
                 LOG.warning('Subtitle timing unavailable: result=%s videoStreams=%s packetTimes=%s', proc.returncode, len(data.get('streams', [])), len(packets))
-                raise ValueError('Horodatage vidéo indisponible.')
+                raise ValueError('Video timestamp unavailable.')
             return round(start * 90000)
         except (TimeoutError, ValueError, KeyError) as error:
             if proc.returncode is None:
                 proc.kill()
                 await proc.wait()
             LOG.warning('Subtitle timing failed: %s', type(error).__name__)
-            raise ValueError('Impossible de lire l’horodatage vidéo pour synchroniser les sous-titres externes. Essaie une autre source ou une piste intégrée.') from error
+            raise ValueError('Cannot read the video timestamp to sync external subtitles. Try another source or an embedded track.') from error
 
     async def prepare(self, loopback_base: str):
         if self.kind == 'dash':
-            raise ValueError('Ce flux DASH n’est pas encore pris en charge. Choisis une source HLS ou MP4.')
+            raise ValueError('DASH streams are not supported yet. Choose an HLS or MP4 source.')
         external = bool(self.subtitle_tracks)
         is_hls = self.kind == 'hls' or '.m3u8' in urlsplit(self.source).path.lower()
         if not is_hls and (external or self.kind in {'mkv', 'webm'}) and self.target_protocol != 'dlna':
@@ -299,7 +299,7 @@ class MediaSession:
             external = False
         if external:
             if '#EXT-X-DISCONTINUITY' in text:
-                raise ValueError('Les sous-titres externes ne sont pas pris en charge sur ce flux avec ruptures temporelles. Choisis une piste intégrée ou désactive-les.')
+                raise ValueError('External subtitles are not supported on streams with timeline discontinuities. Choose an embedded track or turn subtitles off.')
             track = self.subtitle_tracks[self.default_subtitle]
             subtitle_text = await self.subtitle_text(track)
             self.duration = max(self.duration, sum(float(n) for n in re.findall(r'#EXTINF:([\d.]+)', text)))
@@ -316,7 +316,7 @@ class MediaSession:
         if not text:
             text, _ = await asyncio.wait_for(self.fetch_text(web_url(track['url'])), 12)
         if not isinstance(text, str) or len(text.encode()) > MAX_TEXT:
-            raise ValueError('Piste de sous-titres trop volumineuse ou invalide.')
+            raise ValueError('Subtitle track too large or invalid.')
         return text
 
     def cache_subtitle(self, index, text):
@@ -355,7 +355,7 @@ class MediaSession:
     async def prepare_dlna_compatible(self, loopback_base, mime, position=0):
         ffmpeg, probe = binary('ffmpeg'), binary('ffprobe')
         if not ffmpeg or not probe:
-            raise ValueError('Ce téléviseur nécessite FFmpeg pour lire ce flux HLS. Installe-le avec brew install ffmpeg.')
+            raise ValueError('This TV requires FFmpeg to play this HLS stream. Install it with brew install ffmpeg.')
         text, actual = await self.fetch_text(self.source)
         self.compat_input, self.compat_info = choose_manifest(text, actual)
         self.compat_input_source = actual
@@ -366,7 +366,7 @@ class MediaSession:
             streams = json.loads(output).get('streams', [])
             video = next((s for s in streams if s.get('codec_type') == 'video'), None)
             if proc.returncode or not video:
-                raise ValueError('Impossible de préparer la vidéo HLS pour la TV. Relance le lecteur puis choisis le flux principal (master).')
+                raise ValueError('Cannot prepare the HLS video for the TV. Restart the player and choose the master stream.')
         except BaseException:
             if proc.returncode is None:
                 proc.kill()
@@ -400,26 +400,26 @@ class MediaSession:
             if size >= 65536 or size and self.compat_process.returncode == 0:
                 return f'{self.base}/compatible.ts'
             if self.compat_process.returncode is not None:
-                raise ValueError('La préparation du flux compatible DLNA a échoué. Choisis le master contenant l’image et le son.')
+                raise ValueError('Could not prepare a compatible DLNA stream. Choose a master with video and audio.')
             await asyncio.sleep(.1)
-        raise ValueError('Le flux compatible DLNA n’est pas prêt. Vérifie la source vidéo et réessaie.')
+        raise ValueError('The compatible DLNA stream is not ready. Check the video source and try again.')
 
     async def watch_compatible(self):
         while self.compat_process and self.compat_process.returncode is None:
             path = self.compat_directory / 'video.ts'
             if path.exists() and path.stat().st_size > 6 * 1024**3:
-                self.error = 'La limite du cache DLNA temporaire de 6 Go est atteinte.'
+                self.error = 'The temporary DLNA cache has reached its 6 GB limit.'
                 self.compat_process.terminate()
                 return
             await asyncio.sleep(1)
         if self.compat_process and self.compat_process.returncode:
-            self.error = self.error or 'La préparation du flux DLNA s’est interrompue. Relance la diffusion.'
+            self.error = self.error or 'DLNA stream preparation stopped. Start casting again.'
 
     async def serve_compatible(self, request):
         path = self.compat_directory / 'video.ts'
         complete = self.compat_process.returncode == 0
         if self.compat_process.returncode not in {None, 0} or self.error:
-            raise web.HTTPBadGateway(text='Flux DLNA indisponible.')
+            raise web.HTTPBadGateway(text='DLNA stream unavailable.')
         headers = {'Content-Type': self.compat_mime, 'Accept-Ranges': 'bytes' if complete else 'none', 'Cache-Control': 'no-store'}
         start, remaining, status = 0, None, 200
         if complete:
@@ -470,7 +470,7 @@ class MediaSession:
     async def start_remux(self, loopback_base: str):
         ffmpeg = binary('ffmpeg')
         if not ffmpeg:
-            raise ValueError('Ce format nécessite FFmpeg. Installe-le avec brew install ffmpeg.')
+            raise ValueError('This format requires FFmpeg. Install it with brew install ffmpeg.')
         self.directory = Path(tempfile.mkdtemp(prefix='airplay-flixer-'))
         url = self.resource(self.source).replace(self.base, f'{loopback_base}/media/{self.id}', 1)
         self.process = await asyncio.create_subprocess_exec(
@@ -485,14 +485,14 @@ class MediaSession:
             if (self.directory / 'video.m3u8').exists():
                 return
             if self.process.returncode is not None:
-                raise ValueError('Conversion du conteneur impossible. Essaie une autre source HLS ou MP4.')
+                raise ValueError('Cannot convert the container. Try another HLS or MP4 source.')
             await asyncio.sleep(0.2)
-        raise ValueError('La préparation du média a pris trop de temps.')
+        raise ValueError('Media preparation timed out.')
 
     async def watch_remux(self):
         while self.process and self.process.returncode is None:
             if self.directory and sum(p.stat().st_size for p in self.directory.glob('*') if p.is_file()) > 6 * 1024**3:
-                self.error = 'La limite de cache temporaire de 6 Go est atteinte.'
+                self.error = 'The temporary cache has reached its 6 GB limit.'
                 self.process.terminate()
                 return
             await asyncio.sleep(5)
@@ -535,7 +535,7 @@ class MediaSession:
                 vtt = await self.subtitle_vtt(index)
             except (ValueError, TimeoutError, aiohttp.ClientError):
                 LOG.warning('Subtitle rendition unavailable: track=%s', index)
-                raise web.HTTPNotFound(text='Piste de sous-titres indisponible.') from None
+                raise web.HTTPNotFound(text='Subtitle track unavailable.') from None
             if match[2] == 'vtt':
                 return web.Response(text=shift_webvtt(vtt, self.subtitle_tracks[index]['offset']), content_type='text/vtt', headers={'Cache-Control':'no-store'})
             return web.Response(text=self.subtitle_playlist(f'{self.base}/subtitles/{index}.vtt?rev={self.subtitle_revision}'), content_type='application/vnd.apple.mpegurl')
@@ -570,7 +570,7 @@ class MediaSession:
                 response = await self.upstream(url)
             if response.status >= 400:
                 if request.remote not in {'127.0.0.1','::1'}:
-                    self.error = f'Le serveur vidéo refuse une ressource (HTTP {response.status}). Recharge la page puis relance la vidéo.'
+                    self.error = f'The video server refused a resource (HTTP {response.status}). Reload the page and restart the video.'
                 LOG.warning('Media upstream rejected: HTTP=%s type=%s', response.status, content_type.split(';')[0])
             if response.status < 400 and ('mpegurl' in content_type or '.m3u8' in urlsplit(str(response.url)).path.lower()):
                 text = await read_text_body(response)

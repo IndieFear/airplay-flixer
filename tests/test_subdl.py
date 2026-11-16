@@ -64,7 +64,7 @@ class SubDLTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_download_only_known_results_and_cache_without_key_to_files(self):
         with self.assertRaises(ValueError):await self.p.download(None,'missing')
-        self.p.results['file']={'url':'https://dl.subdl.com/subtitle/id/file','season':None,'episode':None,'release':'WEB-DL','title':'Film','language':'fr'}
+        self.p.results['file']={'url':'https://dl.subdl.com/subtitle/id/file','season':None,'episode':None,'release':'WEB-DL','title':'Movie','language':'fr'}
         client=MagicMock();client.get.return_value=Response(SRT.encode())
         first=await self.p.download(client,'file');second=await self.p.download(client,'file')
         self.assertEqual(first['id'],second['id']);self.assertEqual(first['track']['provider'],'subdl');self.assertEqual(first['track']['content'],SRT)

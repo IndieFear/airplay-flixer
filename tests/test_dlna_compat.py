@@ -166,14 +166,14 @@ class RemuxTests(unittest.IsolatedAsyncioTestCase):
             base = str(relay.make_url('')).rstrip('/')
             folder = self.folder / 'Downloads'
             folder.mkdir()
-            original = folder / 'Épisode.mp4'
+            original = folder / 'Episode.mp4'
             original.write_bytes(b'original')
             with patch.object(Path, 'home', return_value=self.folder):
-                download.start(self.client, {'url': str(self.source.make_url('/download')), 'kind': 'hls', 'title': 'Épisode'}, base)
+                download.start(self.client, {'url': str(self.source.make_url('/download')), 'kind': 'hls', 'title': 'Episode'}, base)
                 await asyncio.wait_for(download.task, 20)
             result = download.status()
             self.assertEqual(result['state'], 'done', result)
-            self.assertEqual(result['filename'], 'Épisode (2).mp4')
+            self.assertEqual(result['filename'], 'Episode (2).mp4')
             self.assertEqual(original.read_bytes(), b'original')
             self.assertEqual(list(folder.glob('*.part')), [])
             probe = subprocess.run([binary('ffprobe'), '-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', str(folder / result['filename'])], capture_output=True, check=True)
@@ -197,7 +197,7 @@ class RemuxTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('never-fetch.m3u8',self.fetched)
 
     async def test_real_hls_player_discovers_both_external_webvtt_renditions(self):
-        tracks=[{'content':f'1\n00:00:00,000 --> 00:00:02,000\nVersion {i+1}\n','language':'fr','label':f'Piste {i+1}','default':i==0} for i in range(2)]
+        tracks=[{'content':f'1\n00:00:00,000 --> 00:00:02,000\nVersion {i+1}\n','language':'fr','label':f'Track {i+1}','default':i==0} for i in range(2)]
         self.media=MediaSession(self.client,{'url':str(self.source.make_url('/v/video.m3u8')),'kind':'hls','duration':3,'subtitle':tracks[0],'subtitles':tracks},str(self.relay.make_url('')).rstrip('/'))
         url=await self.media.prepare(str(self.relay.make_url('')).rstrip('/'))
         probe=await asyncio.create_subprocess_exec(binary('ffprobe'),'-v','error','-allowed_extensions','ALL','-read_intervals','%+#2','-show_entries','stream=codec_type,codec_name:stream_tags=language,title','-of','json',url,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL)

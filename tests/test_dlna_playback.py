@@ -15,9 +15,9 @@ from airplay_flixer.server import Companion
 
 class MetadataTests(unittest.TestCase):
     def test_xml_escapes_titles_and_urls_and_parses_times(self):
-        root = ET.fromstring(metadata('http://example.test/v?a=1&b=2', 'Film < & >', 'video/mp4', 300))
+        root = ET.fromstring(metadata('http://example.test/v?a=1&b=2', 'Movie < & >', 'video/mp4', 300))
         values = {node.tag.split('}')[-1]: node.text for node in root.iter()}
-        self.assertEqual(values['title'],'Film < & >')
+        self.assertEqual(values['title'],'Movie < & >')
         self.assertEqual(values['res'],'http://example.test/v?a=1&b=2')
         self.assertEqual(time_value('01:02:03.5'),3723.5)
         self.assertIsNone(time_value('NOT_IMPLEMENTED'))
@@ -98,7 +98,7 @@ class PlaybackTests(unittest.IsolatedAsyncioTestCase):
         return web.Response(text=xml,content_type='text/xml')
 
     async def cast(self):
-        result = await self.c.dispatch({'action':'cast','media':{'url':str(self.source.make_url('/movie.mp4')),'kind':'mp4','title':'Film & test','duration':600,'subtitle':{'url':'https://subs.example/fr.vtt'}}})
+        result = await self.c.dispatch({'action':'cast','media':{'url':str(self.source.make_url('/movie.mp4')),'kind':'mp4','title':'Movie & test','duration':600,'subtitle':{'url':'https://subs.example/fr.vtt'}}})
         for _ in range(100):
             if self.c.confirmed: break
             await asyncio.sleep(.01)

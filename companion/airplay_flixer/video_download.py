@@ -39,21 +39,21 @@ def to_srt(text):
         start, end = (stamp(cue_ms(match[key])).replace('.', ',') for key in ('a', 'b'))
         cues.append(f'{len(cues) + 1}\n{start} --> {end}\n{body}')
     if not cues:
-        raise ValueError('Aucun sous-titre SRT ou WebVTT exploitable.')
+        raise ValueError('No usable SRT or WebVTT subtitles.')
     return '\n\n'.join(cues) + '\n'
 
 
 def check_playlist(text):
     lines = {line.strip() for line in text.splitlines()}
     if '#EXTM3U' not in lines:
-        raise ValueError('Manifeste HLS invalide.')
+        raise ValueError('Invalid HLS manifest.')
     for line in lines:
         if line.startswith(('#EXT-X-KEY:', '#EXT-X-SESSION-KEY:')):
             key = attributes(line)
             if key.get('METHOD') not in {'NONE', 'AES-128'} or key.get('KEYFORMAT', 'identity') != 'identity':
-                raise ValueError('Ce flux HLS utilise une protection non prise en charge.')
+                raise ValueError('This HLS stream uses unsupported protection.')
     if not any(line.startswith('#EXT-X-STREAM-INF:') for line in lines) and '#EXT-X-ENDLIST' not in lines:
-        raise ValueError('Ce flux est en direct ou encore incomplet. Seules les vidéos à la demande sont téléchargeables.')
+        raise ValueError('This stream is live or incomplete. Only on-demand videos can be downloaded.')
 
 
 class DownloadRelay(MediaSession):
@@ -69,7 +69,7 @@ class DownloadRelay(MediaSession):
     async def upstream(self, *args, **kwargs):
         response = await super().upstream(*args, **kwargs)
         if response.status >= 400:
-            self.error = f'Le serveur vidéo refuse une ressource (HTTP {response.status}). Recharge la vidéo puis réessaie.'
+            self.error = f'The video server refused a resource (HTTP {response.status}). Reload the video and try again.'
         return response
 
 
@@ -88,14 +88,14 @@ class VideoDownload:
 
     def start(self, client, payload, base_url):
         if self.task and not self.task.done():
-            raise ValueError('Un téléchargement est déjà en cours.')
+            raise ValueError('A download is already running.')
         if not isinstance(payload, dict) or payload.get('kind') not in FORMATS:
-            raise ValueError('Choisis une source vidéo HLS, MP4, MKV ou WebM.')
+            raise ValueError('Choose an HLS, MP4, MKV or WebM video source.')
         media = DownloadRelay(client, payload, base_url)
         suffix = FORMATS[media.kind]
         if media.kind == 'mp4' and Path(urlsplit(media.source).path).suffix.lower() in {'.mov', '.m4v'}:
             suffix = Path(urlsplit(media.source).path).suffix.lower()
-        title = re.sub(r'[\\/:\x00-\x1f\x7f]', ' ', media.title or '').strip('. ')[:60].strip() or 'Vidéo web'
+        title = re.sub(r'[\\/:\x00-\x1f\x7f]', ' ', media.title or '').strip('. ')[:60].strip() or 'Web video'
         self.state = {'state': 'running', 'title': title, 'bytes': 0}
         self.task = asyncio.create_task(self.run(media, title, suffix))
         return self.status()
@@ -119,11 +119,11 @@ class VideoDownload:
         except ValueError as error:
             media.error = str(error)
         except (aiohttp.ClientError, TimeoutError):
-            media.error = 'Le serveur vidéo ne répond plus.'
-        raise web.HTTPBadGateway(text='Média indisponible.')
+            media.error = 'The video server stopped responding.'
+        raise web.HTTPBadGateway(text='Media unavailable.')
 
     async def run(self, media, title, suffix):
-        guard = SleepGuard('Airplay Flixer - téléchargement en cours')
+        guard = SleepGuard('Airplay Flixer - download in progress')
         guard.acquire()
         subtitle_file = None
         try:
@@ -140,7 +140,7 @@ class VideoDownload:
                     with contextlib.suppress(OSError):
                         subtitle_file.unlink(missing_ok=True)
                     subtitle_file = None
-                    self.state['subtitleWarning'] = 'La piste choisie n’a pas pu être enregistrée.'
+                    self.state['subtitleWarning'] = 'The selected subtitle track could not be saved.'
                 finally:
                     media.error = None
             if media.kind == 'hls':
@@ -149,7 +149,7 @@ class VideoDownload:
                 await self.copy(media)
             size = self.partial.stat().st_size
             if not size:
-                raise ValueError('Le fichier vidéo reçu est vide.')
+                raise ValueError('The downloaded video file is empty.')
             index = 1
             while True:
                 stem = title + (f' ({index})' if index > 1 else '')
@@ -169,21 +169,21 @@ class VideoDownload:
                         index += 1
                         continue
                     except OSError:
-                        self.state['subtitleWarning'] = 'La piste choisie n’a pas pu être enregistrée.'
+                        self.state['subtitleWarning'] = 'The selected subtitle track could not be saved.'
                 break
             self.state.update(state='done', filename=name, bytes=size)
         except asyncio.CancelledError:
             self.state['state'] = 'cancelled'
             raise
         except (aiohttp.ClientError, TimeoutError):
-            self.state.update(state='error', error='Le transfert a été interrompu. Recharge la vidéo puis réessaie.')
+            self.state.update(state='error', error='The transfer was interrupted. Reload the video and try again.')
         except PermissionError:
-            self.state.update(state='error', error='Autorise Airplay Flixer à écrire dans le dossier Téléchargements dans les réglages de macOS.')
+            self.state.update(state='error', error='Allow Airplay Flixer to write to Downloads in macOS Settings.')
         except ValueError as error:
             self.state.update(state='error', error=str(error))
         except Exception as error:
             LOG.warning('Video download failed: %s', type(error).__name__)
-            self.state.update(state='error', error='Impossible d’enregistrer la vidéo. Vérifie l’espace libre dans Téléchargements.')
+            self.state.update(state='error', error='Cannot save the video. Check the available space in Downloads.')
         finally:
             guard.release()
             self.relay = None
@@ -198,10 +198,10 @@ class VideoDownload:
     async def copy(self, media):
         async with await media.upstream(media.source) as response:
             if response.status != 200:
-                raise ValueError(media.error or 'Le serveur ne fournit pas le fichier vidéo complet.')
+                raise ValueError(media.error or 'The server did not provide the complete video file.')
             mime = response.headers.get('Content-Type', '').split(';')[0].lower()
             if mime and mime not in {'application/octet-stream', 'binary/octet-stream', 'application/mp4'} and not mime.startswith('video/'):
-                raise ValueError('Le serveur a renvoyé une réponse qui n’est pas un fichier vidéo.')
+                raise ValueError('The server response is not a video file.')
             self.state['total'] = response.content_length
             with self.partial.open('wb') as target:
                 async for chunk in response.content.iter_chunked(256 * 1024):
@@ -210,7 +210,7 @@ class VideoDownload:
     async def remux(self, media):
         ffmpeg = binary('ffmpeg')
         if not ffmpeg:
-            raise ValueError('FFmpeg est nécessaire pour télécharger une vidéo HLS. Installe-le avec brew install ffmpeg.')
+            raise ValueError('FFmpeg is required to download HLS videos. Install it with brew install ffmpeg.')
         options = await asyncio.to_thread(hls_probe_options, ffmpeg)
         self.relay = media
         launch = asyncio.create_task(asyncio.create_subprocess_exec(
@@ -236,4 +236,4 @@ class VideoDownload:
                     await process.wait()
             raise
         if process.returncode or media.error:
-            raise ValueError(media.error or 'Impossible d’assembler ce flux HLS en MP4. Essaie une autre source vidéo.')
+            raise ValueError(media.error or 'Cannot assemble this HLS stream into MP4. Try another video source.')
