@@ -55,14 +55,14 @@ with tempfile.TemporaryDirectory(prefix='flixer-smoke-') as directory:
         missing_key = urllib.request.Request(f'http://127.0.0.1:{runtime["port"]}/rpc', data=json.dumps({'action':'os_search','query':'test','language':'fr','type':'movie'}).encode(), headers={'Authorization':'Bearer '+runtime['token'],'Content-Type':'application/json'})
         with opener.open(missing_key,timeout=10) as response:
             failed=json.load(response)
-        assert not failed['ok'] and 'clé API' in failed['error']
+        assert not failed['ok'] and 'API key' in failed['error']
         with opener.open(request,timeout=10) as response:
             assert json.load(response)['result']['error'] is None
         print('OpenSubtitles missing-key flow and playback error isolation: OK')
         subdl_request = urllib.request.Request(f'http://127.0.0.1:{runtime["port"]}/rpc', data=json.dumps({'action':'sd_search','query':'test','language':'fr','type':'movie'}).encode(), headers={'Authorization':'Bearer '+runtime['token'],'Content-Type':'application/json'})
         with opener.open(subdl_request,timeout=10) as response:
             failed=json.load(response)
-        assert not failed['ok'] and 'clé API SubDL' in failed['error']
+        assert not failed['ok'] and 'SubDL API key' in failed['error']
         with opener.open(request,timeout=10) as response:
             assert json.load(response)['result']['error'] is None
         print('SubDL missing-key flow and playback error isolation: OK')
