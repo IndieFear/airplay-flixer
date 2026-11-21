@@ -1,6 +1,7 @@
 import {formatTime, progress} from "./player.js";
 import {groupSubtitles, preferredSubtitle, subtitleLanguage, subtitleLanguageOptions} from "./subtitles.js";
 import {downloadable} from "./detection.js";
+import {probedSourceLabel} from "./stream-info.js";
 const $ = id => document.getElementById(id);
 let osBusy = false, osQueryDirty = false, osSearchParams = null, osPage = 1, osChosen = null;
 let downloadBusy = false, downloadError = "";
@@ -26,6 +27,7 @@ function availability() {
   $("toggle").disabled ||= state?.pauseable === false && !state?.paused;
   $("source").disabled = busy || !page?.sources.length;
   $("subtitle").disabled = busy || state?.selectedProtocol === "dlna" && !state.dlnaExternalSubtitles;
+  $("subtitle-detection-hint").hidden = !page?.sources.length;
   $("subtitle-language").disabled = busy || state?.selectedProtocol === "dlna" && !state.dlnaExternalSubtitles;
   $("pairing-card").hidden = state?.selectedProtocol === "dlna" || deviceDirty || !state?.selected;
   $("pair").hidden = state?.selectedProtocol === "dlna";
@@ -285,6 +287,7 @@ function renderPage(value) {
   const previousLanguage = $("subtitle-language").value;
   page = value;
   $("source").replaceChildren(...(value.sources.length ? value.sources.map(s => new Option(s.label, s.url)) : [new Option("No stream detected", "")]));
+  renderProbeLabels();
   $("source").disabled = !value.sources.length;
   $("source-count").textContent = `${value.sources.length} ${value.sources.length > 1 ? "sources" : "source"}`;
   if (value.sources.some(s => s.url === previousSource)) $("source").value = previousSource;
@@ -354,6 +357,47 @@ $("destination").addEventListener("click", () => {
   picker.open = !wasOnPlayback || !picker.open;
   if (picker.open) ($("device-rows").querySelector("input:checked, input:not(:disabled)") || $("scan")).focus();
 });
+let probeEntries = [];
+let probeError = "";
+
+function renderProbeLabels() {
+  const entries = new Map(probeEntries.map(entry => [entry.url, entry]));
+  const labels = new Map();
+  for (const source of page?.sources || []) {
+    const entry = entries.get(source.url);
+    const result = entry?.kind === source.kind && entry.metadata === JSON.stringify(source.info ?? null) ? entry.result : null;
+    labels.set(source.url, result ? probedSourceLabel(source, result) : source.label);
+  }
+  const counts = new Map();
+  for (const label of labels.values()) counts.set(label, (counts.get(label) || 0) + 1);
+  const duplicates = new Map();
+  for (const option of $("source").options) {
+    const label = labels.get(option.value);
+    if (!label) continue;
+    const index = (duplicates.get(label) || 0) + 1;
+    duplicates.set(label, index);
+    option.textContent = counts.get(label) > 1 ? `${label} · #${index}` : label;
+  }
+  const waiting = probeEntries.filter(entry => entry.result === undefined).length;
+  const analyzed = probeEntries.length - waiting;
+  const failed = probeEntries.filter(entry => entry.result === null).length;
+  const status = $("source-analysis");
+  status.textContent = probeError || (waiting ? `Analyzing sources · ${analyzed} of ${probeEntries.length}` :
+    failed ? `Metadata unavailable for ${failed} ${failed === 1 ? "source" : "sources"}.` : "");
+  status.hidden = !status.textContent;
+}
+
+async function readSourceProbes(sources) {
+  try {
+    probeEntries = await send({action:"source_probes", tabId, sources});
+    renderProbeLabels();
+    if (probeEntries.some(entry => entry.result === undefined)) setTimeout(readSourceProbes, 750);
+  } catch (err) {
+    probeError = err.message;
+    renderProbeLabels();
+  }
+}
+
 function renderSourceHint() {
   const details = page?.sources.find(s => s.url === $("source").value)?.details || "";
   $("source-hint").textContent = details;
@@ -541,6 +585,13 @@ $("check-updates").addEventListener("click", async () => {
 const [active] = await chrome.tabs.query({active: true, currentWindow: true});
 tabId = active?.id;
 await refresh();
+if (page) {
+  if (state?.sourceAnalysis) readSourceProbes(page.sources.map(({url, kind, info}) => ({url, kind, info})));
+  else if (state && page.sources.length) {
+    probeError = "Update the companion for automatic source analysis.";
+    renderProbeLabels();
+  }
+}
 setInterval(() => { if (!busy) send({action: "status"}).then(value => { if (!busy) renderState(value); }).catch(() => {}); }, 1000);
 
 

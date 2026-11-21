@@ -66,11 +66,12 @@
     </section>
     <section class="cast-options settings-card" aria-label="Cast options">
       <div class="section-heading"><h3>Video source</h3><span id="source-count" class="count"></span></div>
-      <div id="source-field"><label class="visually-hidden" for="source">Quality and source</label><select id="source" aria-describedby="source-hint"><option value="">No stream detected</option></select><details class="source-details"><summary>Stream details</summary><p class="hint" id="source-hint"></p></details></div>
+      <div id="source-field"><label class="visually-hidden" for="source">Quality and source</label><select id="source" aria-describedby="source-hint"><option value="">No stream detected</option></select><p class="hint" id="source-analysis" role="status" hidden></p><details class="source-details"><summary>Stream details</summary><p class="hint" id="source-hint"></p></details></div>
       <div class="subtitle-options"><label for="subtitle-language" class="field-heading">Subtitles</label><select id="subtitle-language"><option value="off">Off</option><option value="auto">Automatic · active track or French</option></select>
       <div id="subtitle-track-field" hidden><label for="subtitle">Starting track</label><select id="subtitle"></select></div>
       <div id="dlna-subtitle-field" hidden><label for="dlna-subtitle-mode">DLNA subtitle delivery</label><select id="dlna-subtitle-mode"><option value="auto">Automatic</option><option value="external">Separate SRT only</option><option value="burn">Burn into video while casting</option></select></div>
       <p class="hint" id="subtitle-hint"></p>
+      <p class="hint" id="subtitle-detection-hint" hidden>Missing a track? Select it in the website’s video player, then click Refresh here.</p>
       </div>
       <div class="cast-area"><button id="cast" class="primary" disabled><span>Cast to device</span><svg><use href="#chevron-icon"/></svg></button><p class="hint" id="cast-hint" role="status"></p></div>
       </section>

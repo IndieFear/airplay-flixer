@@ -165,3 +165,32 @@ test('SubDL imports use their own provider identity alongside OpenSubtitles', as
     assert.equal(result.result.page.recommendedSubtitle,0);
   } finally {chrome.runtime.sendNativeMessage=previous;}
 });
+
+test("opening the popup probes all new sources and reuses results for unchanged sources", async () => {
+  const tabId = 410;
+  const first = {url: "https://cdn.example/one.mp4", kind: "mp4"};
+  const second = {url: "https://cdn.example/two.mp4", kind: "mp4"};
+  const third = {url: "https://cdn.example/three.mp4", kind: "mp4"};
+  for (const {url} of [first, second, third]) {
+    beforeRequest.listeners[0]({tabId, url, frameId: 0, type: "xmlhttprequest"});
+  }
+  const open = sources => message({action: "source_probes", tabId, sources});
+  const settle = async () => {
+    await new Promise(resolve => setImmediate(resolve));
+    const snapshot = await message({action: "source_probes", tabId});
+    assert.ok(snapshot.result.every(entry => entry.result !== undefined));
+  };
+  const calls = () => nativeCalls.filter(call => call.action === "source_analyze").map(call => call.media.url);
+  const start = calls().length;
+  await open([first, second]);
+  await settle();
+  await open([second, first]);
+  await settle();
+  assert.deepEqual(calls().slice(start), [first.url, second.url]);
+  await open([first, third]);
+  await settle();
+  assert.deepEqual(calls().slice(start), [first.url, second.url, third.url]);
+  await open([{...first, info: {height: 1080}}, third]);
+  await settle();
+  assert.deepEqual(calls().slice(start), [first.url, second.url, third.url, first.url]);
+});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseManifest, describeStream, metadataRank, fetchManifest} from '../extension/stream-info.js';
+import {parseManifest, describeStream, metadataRank, fetchManifest, probedSourceLabel} from '../extension/stream-info.js';
 const url = 'https://cdn.example/path/master.m3u8?secret=hidden';
 test('master identifies qualities, quoted codecs and separate audio without claiming child has audio', () => {
   const parsed = parseManifest(`#EXTM3U
@@ -31,7 +31,9 @@ test('muxed audio and URI-less audio rendition stay playable', () => {
 test('media playlists and missing declarations remain unknown; codec-declared video alone is explicit', () => {
   const media = parseManifest('#EXTM3U\n#EXTINF:6,\nsegment.ts',url);
   assert.equal(media.info.audio,null);
-  assert.match(describeStream({kind:'hls',info:media.info}).label,/audio unconfirmed/);
+  assert.equal(describeStream({kind:'hls',info:media.info}).label, 'HLS stream');
+  assert.match(describeStream({kind:'hls',info:media.info}).details, /Audio is not declared/);
+  assert.equal(describeStream({kind:'hls',info:media.info}, 1080).label, 'HLS stream · 1080p in browser');
   assert.equal(parseManifest('not a playlist',url),null);
   const video = parseManifest('#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080,CODECS="avc1.640028"\nv.m3u8',url);
   assert.equal(video.children[0].audio,false);
@@ -51,4 +53,13 @@ test('fetch is bounded and failed access does not masquerade as missing audio',a
     };
     assert.equal((await fetchManifest(url,{Authorization:'Bearer token',Cookie:'private'})).info.audio,null);
   } finally {globalThis.fetch=original;}
+});
+
+test('probe results label fixed and adaptive sources without confusing sampled and maximum quality', () => {
+  const video = {height: 1080, codec_name: 'h264'};
+  const audio = [{codec_name: 'aac', channels: 2}];
+  assert.equal(probedSourceLabel({kind: 'hls'}, {video, audio}), 'HLS · 1080p · H.264 · AAC 2 ch');
+  assert.equal(probedSourceLabel({kind: 'hls', info: {role: 'master', height: 2160}}, {video, audio, variant: true}), 'Auto · up to 2160p · H.264 · AAC 2 ch');
+  assert.equal(probedSourceLabel({kind: 'hls', info: {externalAudio: true}}, {video, audio: []}), 'HLS · 1080p · H.264 · separate audio');
+  assert.equal(probedSourceLabel({kind: 'mp4'}, {video, audio: []}), 'MP4 · 1080p · H.264 · audio not detected');
 });

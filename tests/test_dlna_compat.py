@@ -179,6 +179,25 @@ class RemuxTests(unittest.IsolatedAsyncioTestCase):
             probe = subprocess.run([binary('ffprobe'), '-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', str(folder / result['filename'])], capture_output=True, check=True)
             self.assertEqual({s['codec_type'] for s in json.loads(probe.stdout)['streams']}, {'video', 'audio'})
 
+    async def test_source_analysis_samples_master_with_separate_audio(self):
+        from airplay_flixer.server import Companion
+
+        with patch('airplay_flixer.server.data_directory', return_value=self.folder):
+            companion = Companion()
+        companion.client = self.client
+        app = web.Application()
+        app.router.add_get('/media/{session}/{tail:.*}', companion.control_media)
+        async with TestServer(app) as relay:
+            companion.control_port = relay.port
+            result = await companion.analyze_source({
+                'kind': 'hls', 'url': str(self.source.make_url('/download')),
+            })
+        self.assertTrue(result['variant'])
+        self.assertEqual(result['video']['height'], 180)
+        self.assertEqual(result['video']['codec_name'], 'h264')
+        self.assertEqual(result['audio'][0]['codec_name'], 'aac')
+        self.assertIsNone(companion.probe_media)
+
     async def test_burn_subtitles_uses_compatible_stream(self):
         self.media.dlna_srt = '1\n00:00:00,000 --> 00:00:02,000\nTest caption\n'
         url = await self.media.prepare_dlna_compatible(str(self.relay.make_url('')).rstrip('/'), 'video/mp2t', burn_subtitles=True)

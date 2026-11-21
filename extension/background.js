@@ -150,7 +150,21 @@ async function inspect(tabId) {
   }
   await enrich(candidates, stateFor(tabId));
   const score = candidate => rank(candidate) + metadataRank(candidate.info) + (video && candidate.frameId === video.frameId ? 30 : 0);
-  const sources = candidates.filter(c => !c.kind.startsWith("subtitle") && c.info?.role !== "subtitle").sort((a, b) => score(b) - score(a) || b.seen - a.seen).map((c, i) => ({...c, ...describeStream(c)}));
+  const sources = candidates.filter(c => !c.kind.startsWith("subtitle") && c.info?.role !== "subtitle")
+    .sort((a, b) => score(b) - score(a) || b.seen - a.seen)
+    .map(c => {
+      const player = videos.find(v => v.src === c.url);
+      return {...c, ...describeStream(c, player?.height)};
+    });
+  const labelCounts = new Map();
+  for (const source of sources) labelCounts.set(source.label, (labelCounts.get(source.label) || 0) + 1);
+  const duplicates = new Map();
+  for (const source of sources) {
+    if (labelCounts.get(source.label) < 2) continue;
+    const number = (duplicates.get(source.label) || 0) + 1;
+    duplicates.set(source.label, number);
+    source.label += ` · #${number}`;
+  }
   const state = stateFor(tabId);
   state.domSources = videos.flatMap(v => [v.src, ...v.sources]).filter(url => /^https?:/.test(url || "") && ['hls','mp4','mkv','webm'].includes(mediaKind(url) || "mp4"));
   state.domVideo = state.domSources.length > 0;
@@ -275,6 +289,48 @@ function showCastNotice(index, originalSource, heading, details, theme) {
   setTimeout(remove, 7500);
 }
 
+const probeKinds = new Set(["hls", "mp4", "mkv", "webm"]);
+const probeJobs = new WeakSet();
+let probeQueue = Promise.resolve();
+
+function probeSnapshot(state) {
+  return (state?.sourceProbes || []).map(({url, kind, metadata, result}) => ({url, kind, metadata, result}));
+}
+
+async function sourceProbes(tabId, sources) {
+  await ready;
+  const state = tabs.get(tabId);
+  if (!state || !sources) return probeSnapshot(state);
+  const previous = new Map((state.sourceProbes || []).map(entry => [entry.url, entry]));
+  const detected = new Set([...state.candidates.map(c => c.url), ...(state.domSources || [])]);
+  state.sourceProbes = sources.filter(source => probeKinds.has(source.kind) && detected.has(source.url))
+    .map(({url, kind, info}) => {
+      const metadata = JSON.stringify(info ?? null);
+      const entry = previous.get(url);
+      return entry?.kind === kind && entry.metadata === metadata ? entry : {url, kind, metadata};
+    });
+  persist(tabId);
+  for (const entry of state.sourceProbes) {
+    if (entry.result !== undefined || probeJobs.has(entry)) continue;
+    probeJobs.add(entry);
+    probeQueue = probeQueue.then(async () => {
+      try {
+        if (tabs.get(tabId) !== state || !state.sourceProbes.includes(entry)) return;
+        const children = state.manifests?.[entry.url]?.value?.children || [];
+        const origins = new Set([entry.url, ...children.map(child => child.url)].map(value => new URL(value).origin));
+        const headersByOrigin = Object.fromEntries(Object.entries(state.headers).filter(([origin]) => origins.has(origin)));
+        entry.result = await native({action:"source_analyze", media:{url:entry.url, kind:entry.kind, headersByOrigin}});
+      } catch {
+        entry.result = null;
+      } finally {
+        probeJobs.delete(entry);
+        if (tabs.get(tabId) === state) persist(tabId);
+      }
+    });
+  }
+  return probeSnapshot(state);
+}
+
 async function downloadVideo(tabId, url, subtitle) {
   const page = await inspect(tabId);
   const source = page.sources.find(item => item.url === url);
@@ -305,6 +361,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (!sender.url?.startsWith(chrome.runtime.getURL(""))) return;
   (async () => {
     if (message.action === "inspect") return inspect(message.tabId);
+    if (message.action === "source_probes") return sourceProbes(message.tabId, message.sources);
     if (["os_download","sd_download"].includes(message.action)) {
       const before = stateFor(message.tabId);
       const title = (await inspect(message.tabId)).title;

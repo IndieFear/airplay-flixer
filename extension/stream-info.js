@@ -28,12 +28,29 @@ export function parseManifest(body, url) {
   const variants = children.filter(c => c.role === 'video' || c.role === 'variant');
   return {info: variants.length ? {role: 'master', height: Math.max(...variants.map(c => c.height)), audio: variants.some(c => c.audio === true || c.externalAudio) ? true : variants.every(c => c.audio === false) ? false : null, languages: [...new Set(variants.flatMap(c => c.languages))], codecs: [...new Set(variants.flatMap(c => c.codecs))], qualities: [...new Set(variants.map(c => c.height).filter(Boolean))].sort((a,b) => a-b)} : {role: 'playlist', audio: null}, children};
 }
-export function describeStream(candidate) {
+export function describeStream(candidate, playerHeight) {
   const i = candidate.info || {};
-  const quality = i.height ? `${i.height >= 2160 ? '4K · ' : ''}${i.height}p` : 'quality unspecified';
-  const sound = i.role === 'audio' ? 'audio only' : i.audio === true ? 'video + audio' : i.audio === false ? 'video only' : 'audio unconfirmed';
-  const label = i.role === 'master' ? `Auto · ${i.height ? `up to ${quality}` : 'master'} · ${sound}` : `${candidate.kind.toUpperCase()} · ${i.role === 'audio' ? 'audio only' : `${quality} · ${sound}`}`;
-  const details = [i.role === 'master' ? 'Master stream. Adjusts quality automatically.' : i.externalAudio ? 'Separate audio. Choose the master stream for video and audio.' : i.role === 'audio' ? 'Audio track only.' : i.role === 'playlist' || !candidate.info ? 'This source does not declare its quality or audio tracks.' : 'Fixed quality variant.', i.qualities?.length ? `Qualities ${i.qualities.map(h => `${h}p`).join(', ')}.` : '', i.bitrate ? `${(i.bitrate / 1e6).toFixed(1)} Mb/s` : '', i.fps ? `${i.fps} fps` : '', i.languages?.length ? `Audio : ${[...new Set(i.languages)].join(', ')}` : '', i.codecs?.length ? `Codecs : ${i.codecs.join(', ')}` : ''].filter(Boolean).join(' ');
+  const quality = i.height ? `${i.height >= 2160 ? '4K · ' : ''}${i.height}p` : '';
+  const observed = !quality && playerHeight > 0 ? `${playerHeight}p in browser` : '';
+  const sound = i.role === 'audio' ? 'audio only' : i.audio === true ? 'video + audio' : i.audio === false ? 'video only' : '';
+  const kind = candidate.kind.toUpperCase();
+  const format = i.role === 'master' ? 'Auto' : candidate.kind === 'hls' ? 'HLS stream' : kind;
+  const label = [format, i.role === 'master' && quality ? `up to ${quality}` : quality || observed, sound].filter(Boolean).join(' · ');
+  const explanation = i.role === 'master' ? 'Adaptive stream. The receiver can switch quality during playback.'
+    : i.externalAudio ? 'Separate audio. Choose the master stream for video and audio.'
+    : i.role === 'audio' ? 'Audio track only.'
+    : i.role === 'video' || i.role === 'variant' ? 'Fixed quality variant.' : '';
+  const details = [
+    explanation,
+    observed ? 'Resolution measured in the browser. The receiver may play a different quality.' : '',
+    !quality && !observed && i.role !== 'audio' ? 'Resolution is not declared or could not be read.' : '',
+    !sound ? 'Audio is not declared or could not be verified.' : '',
+    i.qualities?.length ? `Qualities: ${i.qualities.map(h => `${h}p`).join(', ')}.` : '',
+    i.bitrate ? `${(i.bitrate / 1e6).toFixed(1)} Mb/s` : '',
+    i.fps ? `${i.fps} fps` : '',
+    i.languages?.length ? `Audio: ${[...new Set(i.languages)].join(', ')}` : '',
+    i.codecs?.length ? `Codecs: ${i.codecs.join(', ')}` : '',
+  ].filter(Boolean).join(' ');
   return {label, details};
 }
 export function metadataRank(info = {}) {
@@ -59,4 +76,21 @@ export async function fetchManifest(url, headers = {}) {
     return parseManifest(body + decoder.decode(), url);
   } catch { return null; }
   finally { clearTimeout(timer); if (reader) await reader.cancel().catch(() => {}); }
+}
+
+export function probedSourceLabel(source, {video, audio, variant}) {
+  const names = {h264:"H.264", hevc:"H.265", av1:"AV1", aac:"AAC", ac3:"AC-3", eac3:"E-AC-3", opus:"Opus"};
+  const codec = name => names[name] || name?.toUpperCase();
+  const adaptive = variant || source.info?.role === "master";
+  const height = adaptive ? source.info?.height || video?.height : video?.height;
+  const sound = [...new Set(audio.map(track => [
+    codec(track.codec_name), track.channels ? `${track.channels} ch` : ""
+  ].filter(Boolean).join(" ")).filter(Boolean))];
+  return [
+    adaptive ? "Auto" : source.kind.toUpperCase(),
+    height ? `${adaptive ? "up to " : ""}${height}p` : "",
+    codec(video?.codec_name),
+    source.info?.externalAudio ? "separate audio" : sound.join(", ") || (video ? "audio not detected" : ""),
+    !video && sound.length ? "audio only" : "",
+  ].filter(Boolean).join(" · ");
 }

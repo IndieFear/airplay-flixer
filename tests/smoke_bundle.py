@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='flixer-smoke-') as directory:
         request = urllib.request.Request(f'http://127.0.0.1:{runtime["port"]}/rpc', data=b'{"action":"status"}', headers={'Authorization': 'Bearer ' + runtime['token'], 'Content-Type': 'application/json'})
         with opener.open(request, timeout=10) as response:
             result = json.load(response)
-        assert result['ok'] and result['result']['version'] == '0.12.0'
+        assert result['ok'] and result['result']['version'] == '0.12.1'
         assert result['result']['videoDownload'] == {'state':'idle'}
         assert result['result']['subdl'] == {'configured':False}
         assert result['result']['opensubtitles'] == {'configured':False,'connected':False,'username':''}

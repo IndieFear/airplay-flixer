@@ -58,7 +58,7 @@ export function inspectPage() {
         const content = "WEBVTT\n\n" + Array.from(track.cues).map(cue => `${time(cue.startTime)} --> ${time(cue.endTime)}\n${cue.text || ""}\n`).join("\n");
         if (content.length < 350000) tracks.push({content, label: track.label || track.language || "Player subtitles", language: track.language || "und", selected: track.mode === "showing"});
       }
-      return {index, src: video.currentSrc || video.src, sources: [...video.querySelectorAll("source")].map(s => s.src), position: video.currentTime || 0, duration: Number.isFinite(video.duration) ? video.duration : 0, playing: !video.paused, protected: !!video.mediaKeys, area: video.videoWidth * video.videoHeight || video.clientWidth * video.clientHeight, tracks};
+      return {index, src: video.currentSrc || video.src, sources: [...video.querySelectorAll("source")].map(s => s.src), position: video.currentTime || 0, duration: Number.isFinite(video.duration) ? video.duration : 0, playing: !video.paused, protected: !!video.mediaKeys, height: video.videoHeight, area: video.videoWidth * video.videoHeight || video.clientWidth * video.clientHeight, tracks};
     })
   };
 }

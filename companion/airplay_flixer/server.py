@@ -30,7 +30,8 @@ from .subtitle_offset import shift_cues
 from .power import SleepGuard
 from . import VERSION
 from .config import data_directory, read_json, write_json
-from .media import MediaSession, to_webvtt
+from .media import MediaSession, binary, hls_probe_options, to_webvtt
+from .dlna_compat import choose_manifest
 from .airplay_compat import play_url
 from .timeline import Timeline, seconds
 from .pairing import matching_settings, clear_credentials
@@ -69,6 +70,7 @@ class Companion:
         self.control_port = 0
         self.local_ip = '127.0.0.1'
         self.action_lock = asyncio.Lock()
+        self.probe_media = None
         self.timeline = Timeline()
         self.playback_url = None
         self.auto_task = None
@@ -152,7 +154,7 @@ class Companion:
     def status(self):
         selected = self.settings.get('selected')
         return {
-            'dlnaExternalSubtitles': True, 'dlnaAutomaticSubtitles': True, 'version': VERSION, 'message': self.message, 'error': self.error,
+            'dlnaExternalSubtitles': True, 'dlnaAutomaticSubtitles': True, 'sourceAnalysis': True, 'version': VERSION, 'message': self.message, 'error': self.error,
             'discoveryWarning': self.discovery_warning,
             'playbackWarning': self.playback_warning, 'selectedProtocol': self.settings.get('selectedProtocol', 'airplay'),
             'pauseable': self.dlna.pauseable if self.dlna else True,
@@ -729,10 +731,68 @@ class Companion:
             elif self.media and not self.action_lock.locked() and time.monotonic() - self.media.last_access > 60:
                 await self.stop()
 
+    async def analyze_source(self, payload):
+        if self.probe_media is not None:
+            raise ValueError('Another source is being analyzed. Try again shortly.')
+        probe = binary('ffprobe')
+        if not probe:
+            raise ValueError('Install FFmpeg to analyze video sources.')
+        if not isinstance(payload, dict) or payload.get('kind') not in {'hls', 'mp4', 'mkv', 'webm'}:
+            raise ValueError('This source format cannot be analyzed.')
+        media = MediaSession(self.client, payload, f'http://127.0.0.1:{self.control_port}')
+        self.probe_media = media
+        process = None
+        try:
+            async with asyncio.timeout(12):
+                options = ()
+                url = media.resource(media.source)
+                variant = False
+                if media.kind == 'hls':
+                    text, actual = await media.fetch_text(media.source)
+                    if not text.lstrip().startswith('#EXTM3U'):
+                        raise ValueError('The server did not return an HLS playlist.')
+                    if '#EXT-X-STREAM-INF:' in text:
+                        text, _ = choose_manifest(text, actual, highest_quality=True)
+                        variant = True
+                    media.compat_input, media.compat_input_source = text, actual
+                    url = f'{media.base}/compat-input.m3u8'
+                    options = await asyncio.to_thread(hls_probe_options, probe)
+                process = await asyncio.create_subprocess_exec(
+                    probe, '-v', 'error', '-protocol_whitelist', 'http,tcp,crypto',
+                    '-probesize', '2000000', '-analyzeduration', '2000000', *options,
+                    '-show_entries', 'stream=codec_type,codec_name,width,height,avg_frame_rate,channels',
+                    '-of', 'json', url, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                )
+                output, _ = await process.communicate()
+                streams = json.loads(output).get('streams', [])
+                video = next((stream for stream in streams if stream.get('codec_type') == 'video'), None)
+                if process.returncode or not video:
+                    raise ValueError('Could not identify a video track in the sample.')
+                return {'video': video, 'audio': [stream for stream in streams if stream.get('codec_type') == 'audio'], 'variant': variant}
+        except (aiohttp.ClientError, TimeoutError, OSError):
+            raise ValueError('The source could not be analyzed. Start the video and refresh the extension.') from None
+        finally:
+            if process and process.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
+                await process.wait()
+            self.probe_media = None
+
+    async def control_media(self, request):
+        media = self.probe_media
+        if media and request.match_info['session'] == media.id:
+            try:
+                return await media.serve(request)
+            except (ValueError, aiohttp.ClientError, TimeoutError):
+                raise web.HTTPBadGateway() from None
+        return await self.download.serve(request)
+
     async def dispatch(self, message):
         action = message.get('action')
         if action == 'status':
             return self.status()
+        if action == 'source_analyze':
+            return await self.analyze_source(message.get('media'))
         if action == 'video_download_start':
             return self.download.start(self.client, message.get('media'), f'http://127.0.0.1:{self.control_port}')
         if action == 'video_download_cancel':
@@ -828,8 +888,10 @@ class Companion:
                 'TimeoutError': 'Apple TV is not responding. Check that it is on and connected to the same network.',
             }.get(type(error).__name__, 'Cannot connect. Check the local network and Apple TV pairing.')
             action = str(message.get('action', '')) if isinstance(message, dict) else ''
-            isolated = action.startswith(('os_', 'sd_', 'video_download_'))
-            if isolated and not isinstance(error, ValueError):
+            isolated = action == 'source_analyze' or action.startswith(('os_', 'sd_', 'video_download_'))
+            if action == 'source_analyze' and not isinstance(error, ValueError):
+                safe = 'Could not analyze this video source.'
+            elif isolated and not isinstance(error, ValueError):
                 safe = 'Cannot manage the video download.' if action.startswith('video_download_') else 'The subtitle catalog request failed. Try again or check its configuration in Settings.'
             if not isolated:
                 self.error = safe
@@ -872,7 +934,7 @@ async def serve():
     await companion.start()
     control = web.Application(client_max_size=1024 * 1024)
     control.router.add_post('/rpc', companion.rpc)
-    control.router.add_get('/media/{session}/{tail:.*}', companion.download.serve)
+    control.router.add_get('/media/{session}/{tail:.*}', companion.control_media)
     media = web.Application()
     media.router.add_get('/media/{session}/{tail:.*}', companion.relay)
     async def dlna_headers(request, response):
