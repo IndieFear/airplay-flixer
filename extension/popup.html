@@ -1,6 +1,6 @@
 <!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Airplay Flixer</title><link rel="stylesheet" href="popup.css"></head>
+<html lang="en" data-flixer-ui>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Airplay Flixer</title><link rel="stylesheet" href="design.css"><link rel="stylesheet" href="popup.css"></head>
 <body>
   <svg class="symbols" aria-hidden="true"><defs>
     <symbol id="airplay" viewBox="0 0 24 24"><path d="M5 16H3V4h18v12h-2M12 13l-6 8h12z"/></symbol>
@@ -13,23 +13,46 @@
     <symbol id="chevron-icon" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
     <symbol id="search-icon" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></symbol>
     <symbol id="settings-icon" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></symbol>
+    <symbol id="dlna-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="11" rx="2"/><path d="M12 14v6m-7 0h14M5 18v4m14-4v4"/></symbol>
     <symbol id="download-icon" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
   </defs></svg>
   <header><span class="brand-icon"><svg><use href="#airplay"/></svg></span><h1>Airplay <span>Flixer</span></h1><button id="refresh" class="icon-button" title="Refresh" aria-label="Refresh"><svg><use href="#refresh-icon"/></svg></button></header>
   <nav class="tabs" role="tablist" aria-label="Navigation">
     <button id="tab-player" role="tab" aria-selected="true" aria-controls="panel-player" tabindex="0"><svg><use href="#airplay"/></svg>Playback</button>
-    <button id="tab-subtitles" role="tab" aria-selected="false" aria-controls="panel-subtitles" tabindex="-1">Subtitles<span id="subtitle-count" class="tab-count" hidden></span></button>
     <button id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1"><svg><use href="#settings-icon"/></svg>Settings</button>
   </nav>
   <main>
-    <button id="destination" class="destination" type="button" aria-label="Choose casting destination"><span class="destination-icon"><svg><use href="#airplay"/></svg></span><span class="destination-copy"><strong id="room">Choose a device</strong><span id="connection" role="status"><span class="dot"></span><span id="connection-label">Connecting…</span></span></span><span class="destination-change">Change <svg><use href="#chevron-icon"/></svg></span></button>
+    <button id="destination" class="destination" type="button" aria-controls="destination-picker" aria-expanded="false" aria-label="Choose casting destination"><span class="destination-icon"><svg aria-hidden="true"><use id="destination-protocol-icon" href="#airplay"/></svg></span><span class="destination-copy"><strong id="room">Choose a device</strong><span id="connection" role="status"><span class="dot"></span><span id="connection-label">Connecting…</span></span></span><span class="destination-change">Change <svg><use href="#chevron-icon"/></svg></span></button>
     <p class="hint" id="playback-warning" role="status" hidden></p>
     <p id="error" role="alert" hidden></p>
     <div id="panel-player" role="tabpanel" aria-labelledby="tab-player">
+    <details id="destination-picker" class="destination-picker"><summary>Choose or pair a device</summary>
+      <section class="settings-card">
+        <div class="section-heading"><h3>Default device</h3><span id="device-saved" class="count">On this Mac</span></div>
+        <fieldset id="device-list">
+          <legend>Destination</legend>
+          <div id="device-rows"></div>
+        </fieldset>
+        <input id="device" type="hidden">
+        <p class="hint" id="device-hint">This destination will be used for future casts.</p>
+        <button id="save-device" class="primary"><span>Use as default</span><svg><use href="#chevron-icon"/></svg></button>
+        <button id="scan" class="secondary"><svg><use href="#search-icon"/></svg><span>Search for devices</span></button>
+        <div class="discovery-protocols" id="discovery-protocols">
+          <span><svg aria-hidden="true"><use href="#airplay"/></svg><span id="airplay-discovery">AirPlay</span></span>
+          <span><svg aria-hidden="true"><use href="#dlna-icon"/></svg><span id="dlna-discovery">DLNA</span></span>
+        </div>
+        <p class="hint" id="discovery-hint" role="status"></p>
+      </section>
+      <section class="settings-card pairing-card" id="pairing-card"><div class="section-heading"><h3>Apple TV connection</h3><span class="count" id="pair-status">AirPlay</span></div>
+        <p class="hint" id="pair-description">Select an Apple TV to view its pairing.</p><button id="pair" class="text-button">Pair this Apple TV</button>
+        <form id="pair-form" hidden><label for="pin">Code displayed on the TV</label><div class="row"><input id="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" autocomplete="one-time-code" required><button class="small" type="submit">Pair</button><button class="icon-button" id="cancel-pair" type="button" title="Cancel" aria-label="Cancel pairing">×</button></div></form>
+        <button id="forget" class="forget-button" hidden>Forget this Apple TV…</button>
+        <div id="forget-confirm" class="forget-confirm" hidden><p id="forget-description"></p><div class="row"><button id="confirm-forget" class="small danger">Forget pairing</button><button id="cancel-forget" class="small" type="button">Cancel</button></div></div>
+      </section>
+    </details>
     <section class="player" aria-label="Cast player">
-      <div class="player-heading"><span class="eyebrow" id="player-label">READY FOR THE BIG SCREEN</span><span class="screen-badge"><svg><use href="#airplay"/></svg></span></div>
+      <div class="player-heading"><span class="eyebrow" id="player-label">VIDEO</span></div>
       <h2 id="title">Looking for a video…</h2>
-      <p class="source-caption" id="source-caption">From the current tab</p>
       <div id="controls" hidden>
         <p class="hint stream-stats" id="stream-stats" aria-live="off"></p>
         <div class="timeline-wrap"><input id="timeline" type="range" min="0" max="1" value="0" step="1" aria-label="Playback position" disabled></div>
@@ -41,24 +64,17 @@
       <p class="empty hint" id="empty" hidden>Play a video in this tab to find it here.</p>
       
     </section>
-    <section class="media-options" aria-label="Video options">
-      <div class="section-heading"><h3>Video</h3><span id="source-count" class="count"></span></div>
-      <div id="source-field"><label for="source">Quality and source</label><select id="source" aria-describedby="source-hint"><option value="">No stream detected</option></select><details class="source-details"><summary>Stream details</summary><p class="hint" id="source-hint"></p></details></div>
-      </section>
-      <div class="cast-area"><button id="cast" class="primary" disabled><span>Cast to device</span><svg><use href="#chevron-icon"/></svg></button><button id="subtitle-shortcut" class="subtitle-shortcut" type="button"><span>Subtitles</span><span id="subtitle-summary">Automatic</span><svg><use href="#chevron-icon"/></svg></button><p class="hint" id="cast-hint" role="status"></p></div>
-      <div class="video-download">
-        <button id="download-video" class="secondary" type="button" aria-describedby="download-status" hidden disabled><svg><use href="#download-icon"/></svg><span>Download video</span></button>
-        <p id="download-status" class="hint" role="status" hidden></p>
-        <button id="download-cancel" class="text-button" type="button" hidden>Cancel download</button>
-      </div>
-    </div>
-    <div id="panel-subtitles" role="tabpanel" aria-labelledby="tab-subtitles" hidden>
-      <div class="page-heading"><h2>Subtitles</h2><p>Choose a language or adjust the timing.</p></div>
-      <section class="settings-card subtitle-options"><div class="section-heading"><h3>Language and tracks</h3><span class="next-play">For the next cast</span></div>
-      <label for="subtitle-language">Language</label><select id="subtitle-language"><option value="auto">Automatic · active track or French</option><option value="off">Off</option></select>
+    <section class="cast-options settings-card" aria-label="Cast options">
+      <div class="section-heading"><h3>Video source</h3><span id="source-count" class="count"></span></div>
+      <div id="source-field"><label class="visually-hidden" for="source">Quality and source</label><select id="source" aria-describedby="source-hint"><option value="">No stream detected</option></select><details class="source-details"><summary>Stream details</summary><p class="hint" id="source-hint"></p></details></div>
+      <div class="subtitle-options"><label for="subtitle-language" class="field-heading">Subtitles</label><select id="subtitle-language"><option value="off">Off</option><option value="auto">Automatic · active track or French</option></select>
       <div id="subtitle-track-field" hidden><label for="subtitle">Starting track</label><select id="subtitle"></select></div>
+      <div id="dlna-subtitle-field" hidden><label for="dlna-subtitle-mode">DLNA subtitle delivery</label><select id="dlna-subtitle-mode"><option value="auto">Automatic</option><option value="external">Separate SRT only</option><option value="burn">Burn into video while casting</option></select></div>
       <p class="hint" id="subtitle-hint"></p>
-      </section><section id="subtitle-sync" class="sync-card" aria-label="Adjust subtitle timing" hidden>
+      </div>
+      <div class="cast-area"><button id="cast" class="primary" disabled><span>Cast to device</span><svg><use href="#chevron-icon"/></svg></button><p class="hint" id="cast-hint" role="status"></p></div>
+      </section>
+      <details class="settings-card" id="timing-tools" hidden><summary>Subtitle timing</summary><section id="subtitle-sync" class="sync-card" aria-label="Adjust subtitle timing" hidden>
         <div class="section-heading"><h3>Synchronization</h3><span class="count" id="sync-context">During playback</span></div>
         <div id="sync-track-field"><label for="sync-track">Track to adjust</label><select id="sync-track"></select></div>
         <button id="sync-auto" class="secondary auto-button" type="button">Sync automatically</button>
@@ -69,9 +85,9 @@
         <p class="hint" id="sync-meaning" aria-live="polite">No offset.</p></div></details>
         <button id="sync-apply" class="secondary" type="button">Apply to playback</button>
         <p class="hint" id="sync-hint"></p>
-      </section>
-      <section class="settings-card" id="os-search-card" aria-label="Search subtitles">
-        <div class="section-heading"><h3>Find another track</h3><span id="provider-name" class="count">OpenSubtitles</span></div>
+      </section></details>
+      <details class="settings-card" id="os-search-card" aria-label="Search subtitles">
+        <summary>Find subtitles online <span id="provider-name" class="count">OpenSubtitles</span></summary>
         <label for="subtitle-provider">Catalog</label><select id="subtitle-provider"><option value="opensubtitles">OpenSubtitles</option><option value="subdl">SubDL</option></select>
         <p class="hint">Find a WEB-DL, BluRay or other release matching your video.</p>
         <button id="os-setup" class="secondary" type="button">Set up OpenSubtitles</button>
@@ -85,27 +101,35 @@
         <div id="os-results" aria-label="OpenSubtitles results"></div>
         <button id="os-more" class="text-button" type="button" hidden>Next page</button>
 
-      </section>
-      <p id="sync-unavailable" class="hint empty-sync" hidden>Sync tools appear here while casting with external subtitles.</p>
+      </details>
+      <div class="video-download">
+        <button id="download-video" class="secondary" type="button" aria-describedby="download-status" hidden disabled><svg><use href="#download-icon"/></svg><span>Download video</span></button>
+        <p id="download-status" class="hint" role="status" hidden></p>
+        <button id="download-cancel" class="text-button" type="button" hidden>Cancel download</button>
+      </div>
     </div>
     <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
-      <div class="page-heading"><h2>Settings</h2><p>Your device and its connection.</p></div>
+      <div class="page-heading"><h2>Settings</h2></div>
+      <section class="settings-card appearance-card">
+        <h3>Appearance</h3>
+        <fieldset id="theme-picker">
+          <legend class="visually-hidden">Color theme</legend>
+          <label><input type="radio" name="theme" value="system" checked><span>System</span></label>
+          <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+          <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+        </fieldset>
+        <p id="theme-status" class="hint" role="status"></p>
+      </section>
       <section class="settings-card">
-        <div class="section-heading"><h3>Default device</h3><span id="device-saved" class="count">On this Mac</span></div>
-        <label for="device">Destination</label><select id="device"><option value="">Choose an Apple TV</option></select>
-        <p class="hint" id="device-hint">This destination will be used for future casts.</p>
-        <button id="save-device" class="primary"><span>Use as default</span><svg><use href="#chevron-icon"/></svg></button>
-        <button id="scan" class="secondary"><svg><use href="#search-icon"/></svg><span>Search for devices</span></button>
-        <p class="hint" id="discovery-hint"></p>
+        <div class="section-heading"><h3>Subtitle preferences</h3></div>
+        <label for="default-subtitle-language">Default subtitles</label>
+        <select id="default-subtitle-language"><option value="off">Off</option></select>
+        <p class="hint" id="default-subtitle-status" role="status">Your preference applies to new casts and the keyboard shortcut.</p>
       </section>
-      <section class="settings-card pairing-card" id="pairing-card"><div class="section-heading"><h3>Apple TV connection</h3><span class="count" id="pair-status">AirPlay</span></div>
-        <p class="hint" id="pair-description">Select an Apple TV to view its pairing.</p><button id="pair" class="text-button">Pair this Apple TV</button>
-        <form id="pair-form" hidden><label for="pin">Code displayed on the TV</label><div class="row"><input id="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" autocomplete="one-time-code" required><button class="small" type="submit">Pair</button><button class="icon-button" id="cancel-pair" type="button" title="Cancel" aria-label="Cancel pairing">×</button></div></form>
-        <button id="forget" class="forget-button" hidden>Forget this Apple TV…</button>
-        <div id="forget-confirm" class="forget-confirm" hidden><p id="forget-description"></p><div class="row"><button id="confirm-forget" class="small danger">Forget pairing</button><button id="cancel-forget" class="small" type="button">Cancel</button></div></div>
-      </section>
-      <section class="settings-card" id="os-account-card">
-        <div class="section-heading"><h3>OpenSubtitles</h3><span id="os-status" class="count">Not configured</span></div>
+      <section class="settings-card" aria-labelledby="subtitle-catalogs-title">
+        <h3 id="subtitle-catalogs-title">Subtitle catalogs</h3>
+      <details class="provider-settings" id="os-account-card">
+        <summary><span>OpenSubtitles</span><span id="os-status" class="count">Not configured</span></summary>
         <p class="hint">Your key is stored on this Mac. Signing in is optional. Downloads use your OpenSubtitles quota.</p>
         <a class="os-link" href="https://www.opensubtitles.com/consumers" target="_blank" rel="noopener noreferrer">Get an OpenSubtitles API key ↗</a>
         <form id="os-config-form">
@@ -114,13 +138,20 @@
           <button id="os-save" class="secondary" type="submit">Save / sign in</button>
         </form>
         <button id="os-clear" class="text-button" type="button" hidden>Remove key and session</button><p id="os-config-message" class="hint" role="status"></p>
-      </section>
-      <section class="settings-card" id="sd-account-card">
-        <div class="section-heading"><h3>SubDL</h3><span id="sd-status" class="count">Not configured</span></div>
+      </details>
+      <details class="provider-settings" id="sd-account-card">
+        <summary><span>SubDL</span><span id="sd-status" class="count">Not configured</span></summary>
         <p class="hint">Use your SubDL API key. It is stored on this Mac.</p>
         <a class="os-link" href="https://subdl.com/panel/api" target="_blank" rel="noopener noreferrer">Get a SubDL API key ↗</a>
-        <form id="sd-config-form"><label for="sd-key">API key SubDL</label><input id="sd-key" type="password" maxlength="512" autocomplete="off" placeholder="Paste your SubDL API key"><button id="sd-save" class="secondary" type="submit">Save SubDL</button></form>
+        <form id="sd-config-form"><label for="sd-key">SubDL API key</label><input id="sd-key" type="password" maxlength="512" autocomplete="off" placeholder="Paste your SubDL API key"><button id="sd-save" class="secondary" type="submit">Save SubDL</button></form>
         <button id="sd-clear" class="text-button" type="button" hidden>Remove SubDL key</button><p id="sd-config-message" class="hint" role="status"></p>
+      </details>
+      </section>
+      <section class="settings-card">
+        <div class="section-heading"><h3>Updates</h3><span id="extension-version" class="count"></span></div>
+        <button id="check-updates" class="secondary" type="button">Check for updates</button>
+        <p id="update-status" class="hint" role="status"></p>
+        <a id="update-release" class="os-link" href="https://github.com/IndieFear/airplay-flixer/releases/latest" target="_blank" rel="noopener noreferrer" hidden>Open GitHub release ↗</a>
       </section>
     </section>
   </main>

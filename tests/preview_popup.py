@@ -11,9 +11,9 @@ demo.subtitleSession='preview-session';demo.subtitleTracks=[{index:0,label:'Trac
 demo.stream={width:1920,height:1080,segmentBitrate:4500000,transferBitrate:5200000};
 if(mode==='empty')demo.casting=false;
 if(mode==='setup'){demo.casting=false;demo.selected='';demo.selectedName='';}
-demo.opensubtitles={configured:mode==='os',connected:false,username:''};demo.subtitleImportable=true;demo.subdl={configured:mode==='sd'};
+demo.opensubtitles={configured:mode==='os',connected:false,username:''};demo.subtitleImportable=true;demo.dlnaExternalSubtitles=true;demo.dlnaAutomaticSubtitles=true;demo.subdl={configured:mode==='sd'};
 let stamp=Date.now();
-window.chrome={tabs:{query:async()=>[{id:1}]},runtime:{sendMessage:async(m)=>{
+window.chrome={storage:{local:{get:async()=>({theme:new URLSearchParams(location.search).get("theme")}),set:async()=>{}}},tabs:{query:async()=>[{id:1}]},runtime:{getManifest:()=>({version:"0.18.0"}),sendMessage:async(m)=>{
 if(mode==='offline'&&m.action==='status')return {ok:false,error:'Ouvre Airplay Flixer sur le Mac, puis réessaie.'};
 const now=Date.now();if(demo.casting&&!demo.paused)demo.position+=(now-stamp)/1000;stamp=now;
 if(mode==='empty'&&m.action==='inspect')return {ok:true,result:{title:'Onglet sans vidéo',sources:[],subtitles:[]}};
@@ -48,7 +48,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ('/', '/popup.html'):
             data = (root / 'popup.html').read_text().replace('<script type="module"', '<script src="mock.js"></script><script type="module"').encode()
             mime = 'text/html'
-        elif path in ('/popup.js', '/popup.css', '/player.js', '/subtitles.js'):
+        elif path in ('/popup.js', '/popup.css', '/design.css', '/player.js', '/subtitles.js', '/detection.js'):
             data = (root / path.lstrip('/')).read_bytes()
             mime = 'text/javascript' if path.endswith('.js') else 'text/css'
         else:

@@ -22,7 +22,7 @@ LOG = logging.getLogger(__name__)
 FORMATS = {'hls': '.mp4', 'mp4': '.mp4', 'mkv': '.mkv', 'webm': '.webm'}
 
 
-def to_srt(text):
+def to_srt(text, *, allow_empty=False):
     text = text.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n')
     cues = []
     for block in re.split(r'\n[ \t]*\n', text):
@@ -38,7 +38,7 @@ def to_srt(text):
             body = unescape(re.sub(r'<(?!/?[biu]>)[^>]*>', '', body))
         start, end = (stamp(cue_ms(match[key])).replace('.', ',') for key in ('a', 'b'))
         cues.append(f'{len(cues) + 1}\n{start} --> {end}\n{body}')
-    if not cues:
+    if not cues and not allow_empty:
         raise ValueError('No usable SRT or WebVTT subtitles.')
     return '\n\n'.join(cues) + '\n'
 

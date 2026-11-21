@@ -179,6 +179,13 @@ class RemuxTests(unittest.IsolatedAsyncioTestCase):
             probe = subprocess.run([binary('ffprobe'), '-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', str(folder / result['filename'])], capture_output=True, check=True)
             self.assertEqual({s['codec_type'] for s in json.loads(probe.stdout)['streams']}, {'video', 'audio'})
 
+    async def test_burn_subtitles_uses_compatible_stream(self):
+        self.media.dlna_srt = '1\n00:00:00,000 --> 00:00:02,000\nTest caption\n'
+        url = await self.media.prepare_dlna_compatible(str(self.relay.make_url('')).rstrip('/'), 'video/mp2t', burn_subtitles=True)
+        async with self.client.get(url) as response:
+            self.assertEqual(response.status, 200)
+            self.assertTrue(await response.read())
+
     async def test_m2ts_transport_uses_192_byte_packets_for_receivers_requiring_it(self):
         url=await self.media.prepare_dlna_compatible(str(self.relay.make_url('')).rstrip('/'),'video/vnd.dlna.mpeg-tts')
         async with self.client.get(url) as response:

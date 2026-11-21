@@ -31,6 +31,17 @@ test("web pages cannot trigger native commands through extension messaging", () 
   assert.equal(nativeCalls.length, before);
 });
 
+test("a content script can open the popup in its active tab's window", async () => {
+  const calls = [];
+  chrome.action.openPopup = async options => { calls.push(options); };
+  const frame = {id: extensionId, url: "https://player.example/video", tab: {id: 12, active: true, windowId: 7}};
+  const request = {action: "open-player-popup"};
+  assert.deepEqual(await new Promise(resolve => onMessage.listeners[0](request, frame, resolve)), {ok: true});
+  assert.deepEqual(calls, [{windowId: 7}]);
+  frame.tab.active = false;
+  assert.equal(onMessage.listeners[0](request, frame, () => assert.fail("inactive tab")), undefined);
+});
+
 test('extension controller forwards a valid seek and rejects invalid positions', async () => {
   const result = await message({action: 'seek', position: 300});
   assert.equal(result.ok, true);

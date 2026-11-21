@@ -22,7 +22,10 @@ def stamp(value):
 
 
 def shift_webvtt(text,offset):
-    delta=round(offset_value(offset)*1000)
+    return shift_cues(text, round(offset_value(offset)*1000))
+
+
+def shift_cues(text, delta):
     if not delta:return text
     output=[]
     for block in re.split(r'\n\s*\n',text):

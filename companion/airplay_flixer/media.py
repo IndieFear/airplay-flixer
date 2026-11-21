@@ -137,6 +137,9 @@ class MediaSession:
         self.compat_mime = None
         self.compat_info = {}
         self.compat_offset = 0
+        self.dlna_srt = None
+        self.dlna_caption = None
+        self.dlna_caption_requested = False
         for item_origin, values in list((payload.get('headersByOrigin') or {}).items())[:40]:
             try:
                 host = origin(item_origin)
@@ -352,15 +355,20 @@ class MediaSession:
         duration = max(1, self.duration)
         return f'#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{math.ceil(duration)}\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:{duration:.3f},\n{segment}\n#EXT-X-ENDLIST\n'
 
-    async def prepare_dlna_compatible(self, loopback_base, mime, position=0):
+    async def prepare_dlna_compatible(self, loopback_base, mime, position=0, burn_subtitles=False):
         ffmpeg, probe = binary('ffmpeg'), binary('ffprobe')
         if not ffmpeg or not probe:
             raise ValueError('This TV requires FFmpeg to play this HLS stream. Install it with brew install ffmpeg.')
-        text, actual = await self.fetch_text(self.source)
-        self.compat_input, self.compat_info = choose_manifest(text, actual)
-        self.compat_input_source = actual
-        local_url = f'{loopback_base}/media/{self.id}/compat-input.m3u8'
-        proc = await asyncio.create_subprocess_exec(probe, '-v', 'error', *hls_probe_options(probe), '-read_intervals', '%+#1', '-show_entries', 'stream=codec_type,codec_name,width,height,pix_fmt', '-of', 'json', local_url, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        hls = self.kind == 'hls' or '.m3u8' in urlsplit(self.source).path.lower()
+        probe_options = hls_probe_options(probe) if hls else ()
+        if hls:
+            text, actual = await self.fetch_text(self.source)
+            self.compat_input, self.compat_info = choose_manifest(text, actual)
+            self.compat_input_source = actual
+            local_url = f'{loopback_base}/media/{self.id}/compat-input.m3u8'
+        else:
+            local_url = self.resource(self.source).replace(self.base, f'{loopback_base}/media/{self.id}', 1)
+        proc = await asyncio.create_subprocess_exec(probe, '-v', 'error', *probe_options, '-read_intervals', '%+#1', '-show_entries', 'stream=codec_type,codec_name,width,height,pix_fmt', '-of', 'json', local_url, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         try:
             output, _ = await asyncio.wait_for(proc.communicate(), 15)
             streams = json.loads(output).get('streams', [])
@@ -372,12 +380,15 @@ class MediaSession:
                 proc.kill()
                 await proc.wait()
             raise
-        copy = video.get('codec_name') == 'h264' and video.get('pix_fmt') == 'yuv420p' and 0 < video.get('height', 0) <= 1080
+        copy = not burn_subtitles and video.get('codec_name') == 'h264' and video.get('pix_fmt') == 'yuv420p' and 0 < video.get('height', 0) <= 1080
         self.compat_directory = Path(tempfile.mkdtemp(prefix='airplay-flixer-dlna-'))
         self.compat_offset = position
         self.compat_mime = mime
         path = self.compat_directory / 'video.ts'
         options = ['-c:v', 'copy'] if copy else ['-vf', "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2", '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-crf', '22']
+        if burn_subtitles and self.dlna_srt.strip():
+            (self.compat_directory / 'captions.srt').write_text(self.dlna_srt, encoding='utf-8')
+            options[1] += ',subtitles=captions.srt'
         if copy:
             self.compat_info = {'width': video.get('width'), 'height': video.get('height')}
         else:
@@ -388,12 +399,12 @@ class MediaSession:
                 self.compat_info = {'width': int(w * ratio) // 2 * 2, 'height': int(h * ratio) // 2 * 2}
         self.compat_process = await asyncio.create_subprocess_exec(
             ffmpeg, '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
-            *hls_probe_options(probe), *(['-ss', str(position)] if position else []), '-i', local_url,
+            *probe_options, *(['-ss', str(position)] if position else []), '-i', local_url,
             '-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn', *options,
             '-c:a', 'aac', '-ac', '2', '-ar', '48000', '-b:a', '160k',
             '-f', 'mpegts', '-mpegts_flags', '+resend_headers', '-muxdelay', '0',
             *(['-mpegts_m2ts_mode', '1'] if mime == 'video/vnd.dlna.mpeg-tts' else []),
-            str(path), stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            str(path), cwd=self.compat_directory, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
         self.compat_monitor = asyncio.create_task(self.watch_compatible())
         for _ in range(250):
             size = path.stat().st_size if path.exists() else 0

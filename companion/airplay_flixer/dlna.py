@@ -158,7 +158,7 @@ def time_target(value):
     return f'{whole // 3600:02}:{whole // 60 % 60:02}:{whole % 60:02}'
 
 
-def metadata(url, title, mime, duration=0):
+def metadata(url, title, mime, duration=0, subtitle_url=None):
     didl = 'urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/'
     root = ET.Element('DIDL-Lite', {'xmlns': didl, 'xmlns:dc': 'http://purl.org/dc/elements/1.1/', 'xmlns:upnp': 'urn:schemas-upnp-org:metadata-1-0/upnp/'})
     item = ET.SubElement(root, 'item', {'id': '0', 'parentID': '-1', 'restricted': '1'})
@@ -168,6 +168,10 @@ def metadata(url, title, mime, duration=0):
     if duration > 0:
         attrs['duration'] = time_target(duration)
     ET.SubElement(item, 'res', attrs).text = url
+    if subtitle_url:
+        root.set('xmlns:sec', 'http://www.sec.co.kr/')
+        ET.SubElement(item, 'res', {'protocolInfo': 'http-get:*:text/srt:*'}).text = subtitle_url
+        ET.SubElement(item, 'sec:CaptionInfoEx', {'sec:type': 'srt'}).text = subtitle_url
     return ET.tostring(root, encoding='unicode')
 
 
@@ -237,8 +241,8 @@ class DlnaPlayer:
         except ValueError:
             return set()
 
-    async def load(self, url, title, mime, duration):
-        await self.command('SetAVTransportURI', CurrentURI=url, CurrentURIMetaData=metadata(url, title, mime, duration))
+    async def load(self, url, title, mime, duration, subtitle_url=None):
+        await self.command('SetAVTransportURI', CurrentURI=url, CurrentURIMetaData=metadata(url, title, mime, duration, subtitle_url))
         await self.command('Play', Speed=1)
 
     async def seek(self, target):

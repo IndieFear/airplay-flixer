@@ -1,0 +1,28 @@
+/* Shared by the popup and both overlays. Semantic colors adapt together. */
+:root[data-flixer-ui], .flixer-surface {
+  color-scheme: light dark;
+  --canvas: light-dark(#f3f5fb, #111322);
+  --surface: light-dark(#ffffff, #1c2032);
+  --field: light-dark(#f7f8fc, #15192a);
+  --hero: light-dark(#eaeaff, #292748);
+  --text: light-dark(#22233b, #f3f3ff);
+  --muted: light-dark(#515b74, #b6bed5);
+  --accent: light-dark(#5042bf, #bcb2ff);
+  --action: light-dark(#5547c9, #b0a3ff);
+  --action-hover: light-dark(#4737b5, #c6bbff);
+  --on-action: light-dark(#ffffff, #191335);
+  --green: light-dark(#047858, #70ddbb);
+  --danger: light-dark(#a3324c, #ff9fb3);
+  --warning: light-dark(#80510c, #f6c67b);
+  --dlna: light-dark(#087876, #80dedb);
+  --line: color-mix(in srgb, var(--text) 14%, transparent);
+  --hover: color-mix(in srgb, var(--text) 7%, transparent);
+  --pressed: color-mix(in srgb, var(--text) 13%, transparent);
+  --shadow: 0 8px 28px #13154626;
+  --radius-card: 14px;
+  --radius-control: 9px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root[data-flixer-ui][data-theme="light"], .flixer-surface[data-theme="light"] { color-scheme: light; }
+:root[data-flixer-ui][data-theme="dark"], .flixer-surface[data-theme="dark"] { color-scheme: dark; }

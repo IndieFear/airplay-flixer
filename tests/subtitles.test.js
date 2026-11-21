@@ -44,3 +44,12 @@ test('casts every subtitle of the chosen language with exactly one initial track
   assert.deepEqual(subtitleSet(tracks,'off'),{primary:{off:true},tracks:[]});
   assert.throws(()=>subtitleSet(tracks,99));
 });
+
+test('default subtitle language selects an active match and leaves missing tracks off', async () => {
+  const {preferredSubtitle} = await import('../extension/subtitles.js');
+  const tracks = [{language: 'en', selected: true}, {language: 'fr'}, {language: 'fra', selected: true}];
+  assert.equal(preferredSubtitle(tracks, 'fr'), 2);
+  assert.equal(preferredSubtitle(tracks, 'en'), 0);
+  assert.equal(preferredSubtitle(tracks, 'de'), 'off');
+  assert.equal(preferredSubtitle(tracks, undefined), 'off');
+});

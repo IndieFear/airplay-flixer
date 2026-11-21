@@ -4,7 +4,7 @@ import {fetchManifest, describeStream, metadataRank} from "./stream-info.js";
 
 import {fetchArtwork} from "./artwork.js";
 
-import {subtitleSet} from "./subtitles.js";
+import {preferredSubtitle, subtitleSet} from "./subtitles.js";
 
 import {hasCastableVideo, iconPaths} from "./action-state.js";
 
@@ -166,41 +166,113 @@ async function inspect(tabId) {
   return {video, videos, sources, subtitles, artwork, recommendedSubtitle: state.imported?.length ? 0 : null, title: video?.mediaTitle || frames.find(f => f.frameId === 0)?.result?.mediaTitle || frames.find(f => f.frameId === 0)?.result?.title || video?.title || frames[0]?.result?.title || "Web video"};
 }
 
-async function cast(tabId, url, subtitle, subtitleOffset = 0) {
+let latestCast;
+
+async function cast(tabId, url, subtitle, subtitleOffset = 0, dlnaSubtitleMode = "auto") {
   if (typeof subtitleOffset !== "number" || !Number.isFinite(subtitleOffset) || Math.abs(subtitleOffset) > 600) throw new Error("Invalid subtitle offset.");
   const page = await inspect(tabId);
   const source = page.sources.find(item => item.url === url) || (!url ? page.sources[0] : null);
   if (!source) throw new Error("No stream detected. Reload the page and play the video before casting.");
   const video = page.videos.find(v => v.src === source.url || v.sources.includes(source.url)) || page.videos.find(v => v.frameId === source.frameId) || page.video;
+  subtitle ??= preferredSubtitle(page.subtitles, (await chrome.storage.local.get("defaultSubtitleLanguage")).defaultSubtitleLanguage);
   const selected = subtitleSet(page.subtitles, subtitle === "auto" && page.recommendedSubtitle != null ? page.recommendedSubtitle : subtitle);
   const track = selected.primary;
   if (track && !track.off) track.offset = subtitleOffset;
   const relevantOrigins = new Set([source.url, ...selected.tracks.map(t => t.url)].filter(Boolean).map(value => new URL(value).origin));
   const headersByOrigin = Object.fromEntries(Object.entries(stateFor(tabId).headers).filter(([origin]) => relevantOrigins.has(origin)));
-  const media = {url:source.url, kind:source.kind, title:page.title, position:video?.position || 0, duration:video?.duration || 0, subtitle:track, subtitles:selected.tracks, headersByOrigin};
+  const media = {url:source.url, kind:source.kind, title:page.title, position:video?.position || 0, duration:video?.duration || 0, subtitle:track, subtitles:selected.tracks, headersByOrigin, dlnaSubtitleMode};
   if ((await native({action:"status"})).selectedProtocol !== "dlna") media.artwork = await fetchArtwork(page.artwork);
   if (new TextEncoder().encode(JSON.stringify(media)).length > 850000) delete media.artwork;
   if (new TextEncoder().encode(JSON.stringify(media)).length > 850000) throw new Error('These subtitle tracks are too large to send together. Choose another language or turn off external subtitles.');
+  const attempt = latestCast = Symbol();
   const result = await native({action:"cast", media});
   chrome.action.setBadgeText({tabId, text: "TV"});
   chrome.action.setBadgeBackgroundColor({tabId, color: "#1673ef"});
-  confirmAndPause(tabId, video).catch(() => {});
+  confirmAndPause(tabId, video, result, source, track, attempt).catch(() => {});
   return result;
 }
 
-async function confirmAndPause(tabId, video) {
+async function confirmAndPause(tabId, video, castState, source, track, attempt) {
   if (!video) return;
-  for (let attempt = 0; attempt < 15; attempt++) {
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    const state = await native({action: "status"});
-    if (!state.casting) return;
-    if (!state.confirmed) continue;
-    await chrome.scripting.executeScript({target: {tabId, frameIds: [video.frameId]}, func: (index, originalSource) => {
-      const current = document.querySelectorAll("video")[index];
-      if (current && (current.currentSrc || current.src) === originalSource) current.pause();
-    }, args: [video.index, video.src]});
-    return;
+  let state = castState;
+  for (let poll = 0; poll < 40 && latestCast === attempt; poll++) {
+    if (!state.casting || state.title !== castState.title || state.selected !== castState.selected ||
+        state.subtitleSession !== castState.subtitleSession) return;
+    if (state.confirmed) {
+      const protocol = state.selectedProtocol === "dlna" ? "DLNA" : "AirPlay";
+      const stream = state.stream;
+      const rate = stream?.segmentBitrate ?? stream?.declaredBitrate;
+      const picture = stream?.height
+        ? [`${stream.height}p`, rate ? `${stream.segmentBitrate == null ? "Declared " : "≈ "}${(rate / 1e6).toFixed(1)} Mb/s` : ""].filter(Boolean).join(" · ")
+        : source.label;
+      const subtitles = track?.off ? "External subtitles off" : track?.label ? `Selected subtitles: ${track.label}` : "";
+      const heading = `Casting to ${state.selectedName || "your device"} · ${protocol}`;
+      const {theme} = await chrome.storage.local.get("theme").catch(() => ({}));
+      if (latestCast !== attempt) return;
+      await chrome.scripting.executeScript({
+        target: {tabId, frameIds: [video.frameId]},
+        func: showCastNotice,
+        args: [video.index, video.src, heading, [state.title, picture, subtitles].filter(Boolean), theme || "system"]
+      });
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (latestCast !== attempt) return;
+    state = await native({action: "status"});
   }
+}
+
+// Serialized by Chrome and run inside the frame that owns the video.
+function showCastNotice(index, originalSource, heading, details, theme) {
+  const current = document.querySelectorAll("video")[index];
+  if (!current || (current.currentSrc || current.src) !== originalSource) return;
+  current.pause();
+
+  const fullscreen = document.fullscreenElement;
+  if (fullscreen === current) return;
+  const toast = document.createElement("div");
+  toast.className = "flixer-surface";
+  toast.dataset.theme = theme;
+  toast.style.cssText = "position:fixed;margin:0;padding:0;border:0;z-index:2147483647;pointer-events:none";
+  const root = toast.attachShadow({mode: "closed"});
+  const panel = document.createElement("div");
+  panel.setAttribute("role", "status");
+  panel.style.cssText = "box-sizing:border-box;background:var(--surface, #1c2032);color:var(--text, #f3f3ff);border:1px solid var(--line, #ffffff30);border-radius:var(--radius-card, 14px);padding:10px 14px;box-shadow:var(--shadow, 0 8px 28px #13154626);font:13px/1.5 var(--font-ui, system-ui),sans-serif;overflow-wrap:anywhere";
+  const title = document.createElement("strong");
+  title.style.color = "var(--accent, #bcb2ff)";
+  title.textContent = heading;
+  panel.append(title);
+  for (const value of details) {
+    const line = document.createElement("div");
+    line.textContent = value;
+    panel.append(line);
+  }
+  root.append(panel);
+  const reposition = () => {
+    if (!current.isConnected || !toast.isConnected) return remove();
+    const bounds = current.getBoundingClientRect();
+    const left = Math.max(0, bounds.left);
+    const top = Math.max(0, bounds.top);
+    const width = Math.min(innerWidth, bounds.right) - left;
+    toast.style.display = width >= 160 && top + 60 < Math.min(innerHeight, bounds.bottom) ? "block" : "none";
+    toast.style.left = `${left + 12}px`;
+    toast.style.top = `${top + 12}px`;
+    toast.style.width = `${Math.min(width - 24, 360)}px`;
+  };
+  const remove = () => {
+    window.removeEventListener("scroll", reposition, true);
+    window.removeEventListener("resize", reposition);
+    document.removeEventListener("fullscreenchange", remove);
+    current.removeEventListener("play", remove);
+    toast.remove();
+  };
+  (fullscreen || document.documentElement).append(toast);
+  window.addEventListener("scroll", reposition, {capture: true, passive: true});
+  window.addEventListener("resize", reposition);
+  document.addEventListener("fullscreenchange", remove);
+  current.addEventListener("play", remove);
+  reposition();
+  setTimeout(remove, 7500);
 }
 
 async function downloadVideo(tabId, url, subtitle) {
@@ -221,7 +293,16 @@ async function downloadVideo(tabId, url, subtitle) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
-  if (sender.id !== chrome.runtime.id || sender.tab || !sender.url?.startsWith(chrome.runtime.getURL(""))) return;
+  if (sender.id !== chrome.runtime.id) return;
+  if (sender.tab) {
+    if (message?.action !== "open-player-popup" || !sender.tab.active || !/^https?:/.test(sender.url || "") || !chrome.action.openPopup) return;
+    chrome.action.openPopup({windowId: sender.tab.windowId}).then(
+      () => respond({ok: true}),
+      () => respond({ok: false})
+    );
+    return true;
+  }
+  if (!sender.url?.startsWith(chrome.runtime.getURL(""))) return;
   (async () => {
     if (message.action === "inspect") return inspect(message.tabId);
     if (["os_download","sd_download"].includes(message.action)) {
@@ -234,7 +315,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       persist(message.tabId);
       return {...result, page:await inspect(message.tabId)};
     }
-    if (message.action === "cast") return cast(message.tabId, message.url, message.subtitle, message.subtitleOffset);
+    if (message.action === "cast") return cast(message.tabId, message.url, message.subtitle, message.subtitleOffset, message.dlnaSubtitleMode);
     if (message.action === "video_download_start") return downloadVideo(message.tabId, message.url, message.subtitle ?? "off");
     if (message.action === "video_download_cancel") return native({action:"video_download_cancel"});
     if (["sd_configure", "sd_search", "sd_apply", "os_configure", "os_search", "os_apply", "status", "scan", "select", "pair_begin", "pair_finish", "pair_cancel", "pair_forget", "toggle", "stop", "seek", "subtitle_sync", "subtitle_auto_start", "subtitle_auto_cancel"].includes(message.action)) {
@@ -242,7 +323,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if (message.action === 'subtitle_sync' && (typeof message.offset !== 'number' || !Number.isFinite(message.offset) || Math.abs(message.offset) > 600 || !Number.isInteger(message.index) || typeof message.session !== 'string')) throw new Error('Invalid subtitle setting.');
       if (message.action === 'seek' && (typeof message.position !== 'number' || !Number.isFinite(message.position) || message.position < 0)) throw new Error('Invalid playback position.');
       const result = await native(message);
-      if (message.action === "stop" && message.tabId) chrome.action.setBadgeText({tabId: message.tabId, text: ""});
+      if (message.action === "stop") {
+        latestCast = undefined;
+        if (message.tabId) chrome.action.setBadgeText({tabId: message.tabId, text: ""});
+      }
       return result;
     }
     throw new Error("Unknown command.");

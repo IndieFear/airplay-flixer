@@ -98,7 +98,7 @@ class PlaybackTests(unittest.IsolatedAsyncioTestCase):
         return web.Response(text=xml,content_type='text/xml')
 
     async def cast(self):
-        result = await self.c.dispatch({'action':'cast','media':{'url':str(self.source.make_url('/movie.mp4')),'kind':'mp4','title':'Movie & test','duration':600,'subtitle':{'url':'https://subs.example/fr.vtt'}}})
+        result = await self.c.dispatch({'action':'cast','media':{'url':str(self.source.make_url('/movie.mp4')),'kind':'mp4','title':'Movie & test','duration':600,'subtitle':{'content':'1\n00:00:01,000 --> 00:00:03,000\nTest caption\n'}}})
         for _ in range(100):
             if self.c.confirmed: break
             await asyncio.sleep(.01)
@@ -109,7 +109,10 @@ class PlaybackTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['casting'])
         self.assertEqual(result['selectedProtocol'],'dlna')
         self.assertIsNone(self.c.atv)
-        self.assertIn('external subtitles',result['playbackWarning'])
+        self.assertIn('External subtitles',result['playbackWarning'])
+        async with self.client.get(self.c.media.dlna_caption) as response:
+            self.assertEqual(response.status, 200)
+            self.assertIn('Test caption', await response.text())
         self.assertTrue(self.c.confirmed)
         async with self.client.get(self.uri) as response:
             self.assertEqual(await response.read(),b'test-video')
@@ -140,7 +143,7 @@ class PlaybackTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_hls_rejection_switches_automatically_to_compatible_transport(self):
         self.fail_hls = True
-        async def compatible(media, loopback, mime, position=0):
+        async def compatible(media, loopback, mime, position=0, burn_subtitles=False):
             media.compat_mime=mime
             media.compat_offset=position
             media.compat_info={'width':1920,'height':1080}
@@ -157,7 +160,7 @@ class PlaybackTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):await self.c.seek(300)
 
     async def test_announced_formats_skip_unsupported_hls_before_loading(self):
-        async def compatible(media, loopback, mime, position=0):
+        async def compatible(media, loopback, mime, position=0, burn_subtitles=False):
             media.compat_mime=mime
             media.compat_info={'width':1280,'height':720}
             return media.base+'/compatible.ts'
@@ -167,3 +170,26 @@ class PlaybackTests(unittest.IsolatedAsyncioTestCase):
         loads=[v for a,v in self.calls if a=='SetAVTransportURI']
         self.assertEqual(len(loads),1)
         self.assertIn('video/mp2t',loads[0]['CurrentURIMetaData'])
+
+    async def test_automatic_subtitles_retry_rejected_load_with_burn_in(self):
+        self.fail_hls = True
+
+        async def compatible(media, loopback, mime, position=0, burn_subtitles=False):
+            self.assertTrue(burn_subtitles)
+            self.assertEqual(position, 120)
+            self.assertIn('00:00:01,000 --> 00:00:03,000', media.dlna_srt)
+            media.compat_offset = position
+            media.compat_mime = mime
+            return media.base + '/compatible.ts'
+
+        with patch('airplay_flixer.media.MediaSession.prepare', AsyncMock(return_value='http://127.0.0.1/master.m3u8')), patch('airplay_flixer.media.MediaSession.prepare_dlna_compatible', compatible):
+            result = await self.c.cast_dlna({
+                'url': str(self.source.make_url('/movie.mp4')),
+                'kind': 'hls', 'position': 120, 'duration': 600,
+                'subtitle': {'content': '1\n00:02:01,000 --> 00:02:03,000\nTest caption\n'},
+            })
+        loads = [v for action, v in self.calls if action == 'SetAVTransportURI']
+        self.assertEqual(len(loads), 2)
+        self.assertIn('CaptionInfoEx', loads[0]['CurrentURIMetaData'])
+        self.assertNotIn('CaptionInfoEx', loads[1]['CurrentURIMetaData'])
+        self.assertIn('burned into the video', result['playbackWarning'])

@@ -1,5 +1,5 @@
 import {formatTime, progress} from "./player.js";
-import {groupSubtitles} from "./subtitles.js";
+import {groupSubtitles, preferredSubtitle, subtitleLanguage, subtitleLanguageOptions} from "./subtitles.js";
 import {downloadable} from "./detection.js";
 const $ = id => document.getElementById(id);
 let osBusy = false, osQueryDirty = false, osSearchParams = null, osPage = 1, osChosen = null;
@@ -15,6 +15,7 @@ function error(message = "") { $("error").textContent = message; $("error").hidd
 function availability() {
   const active = !!state?.casting, duration = state?.duration || 0;
   $("cast").disabled = busy || !state || !state.selected || !page?.sources.length;
+  $("device-list").disabled = busy || !state;
   $("save-device").hidden = !deviceDirty && !!state?.selected;
   $("save-device").disabled = busy || !state || !$("device").value || $("device").value === state?.selected;
   $("timeline").disabled = busy || !active || duration <= 0 || state.seekable === false;
@@ -24,8 +25,8 @@ function availability() {
   $("backward").disabled ||= state?.seekable === false;
   $("toggle").disabled ||= state?.pauseable === false && !state?.paused;
   $("source").disabled = busy || !page?.sources.length;
-  $("subtitle").disabled = busy || state?.selectedProtocol === "dlna";
-  $("subtitle-language").disabled = busy || state?.selectedProtocol === "dlna";
+  $("subtitle").disabled = busy || state?.selectedProtocol === "dlna" && !state.dlnaExternalSubtitles;
+  $("subtitle-language").disabled = busy || state?.selectedProtocol === "dlna" && !state.dlnaExternalSubtitles;
   $("pairing-card").hidden = state?.selectedProtocol === "dlna" || deviceDirty || !state?.selected;
   $("pair").hidden = state?.selectedProtocol === "dlna";
   $("pair").disabled = busy || !state?.selected || deviceDirty;
@@ -35,9 +36,14 @@ function availability() {
   if (state?.selectedProtocol === "dlna") $("pair-form").hidden = true;
   renderSync();
   renderOpenSubtitles();
-  renderSubtitleSummary();
   renderDownload();
-  $("subtitle-hint").textContent = state?.selectedProtocol === "dlna" ? "DLNA uses embedded tracks in the TV player. External tracks are not transmitted." : subtitleHint();
+  const dlna = state?.selectedProtocol === "dlna";
+  $("dlna-subtitle-field").hidden = !dlna || !state.dlnaExternalSubtitles;
+  $("dlna-subtitle-mode").disabled = busy || $("subtitle").value === "off";
+  const automatic = $("dlna-subtitle-mode").options[0];
+  automatic.disabled = !state?.dlnaAutomaticSubtitles;
+  if (automatic.disabled && $("dlna-subtitle-mode").value === "auto" && state) $("dlna-subtitle-mode").value = "external";
+  $("subtitle-hint").textContent = dlna ? state.dlnaAutomaticSubtitles ? "Automatic tries a separate SRT, then burns it in if the TV rejects it or does not request it. If the TV fetches it without displaying it, select burn-in." : "Update the companion to use automatic DLNA subtitle fallback." : subtitleHint();
 }
 function renderDownload() {
   const job = state?.videoDownload;
@@ -78,11 +84,8 @@ async function downloadAction(message) {
 function renderSync() {
   const active = !!state?.casting, tracks = state?.subtitleTracks || [];
   const available = state?.selectedProtocol !== "dlna" && (active ? tracks.length > 0 : !!page?.subtitles.length && $("subtitle-language").value !== "off");
-  const options = $("panel-subtitles").querySelector(".subtitle-options");
-  if (active && options.previousElementSibling !== $("subtitle-sync")) options.before($("subtitle-sync"));
-  if (!active && options.nextElementSibling !== $("subtitle-sync")) options.after($("subtitle-sync"));
+  $("timing-tools").hidden = !available;
   $("subtitle-sync").hidden = !available;
-  $("sync-unavailable").hidden = available;
   if (!available) return;
   $("sync-context").textContent = active ? "During playback" : "For the next cast";
   const session = active ? state.subtitleSession : "next";
@@ -173,14 +176,14 @@ function renderPlayer() {
   if (stream?.sampleAge > 15) stats.push("Last delivered");
   $("stream-stats").textContent = stream ? stats.join(" · ") : "Waiting for stream measurements…";
   $("stream-stats").title = "Resolution of the latest video variant sent. Video bitrate is estimated from complete segments, including audio when muxed. Transfer rate is measured over 10 seconds and varies with buffering. It can drop to zero. The TV may still be playing a different buffered variant.";
-  $("title").textContent = (active ? state.title : page?.sources.length ? page.title : null) || "Your video. The big screen.";
-  $("player-label").textContent = active ? (state.paused ? "PAUSED" : "PLAYING") : page?.sources.length ? "VIDEO FOUND" : "WAITING FOR A VIDEO";
-  $("source-caption").hidden = active;
-  $("source-caption").textContent = active ? `On ${state.selectedName || "Apple TV"}` : "From the current tab";
+  $("title").textContent = (active ? state.title : page?.sources.length ? page.title : null) || "No video detected";
+  $("player-label").textContent = active ? (state.paused ? "PAUSED" : "PLAYING") : page?.sources.length ? "READY TO CAST" : "CURRENT TAB";
   $("empty").hidden = active || !!page?.sources.length;
-  $("cast").hidden = active && (!page?.sources.length || page.title === state.title && !sourceChanged);
+  $("cast").hidden = !page?.sources.length || active && page.title === state.title && !sourceChanged;
+  $("cast-hint").hidden = $("cast").hidden;
+  $("cast").closest(".cast-area").hidden = $("cast").hidden;
   $("cast").querySelector("span").textContent = busy ? "Please wait…" : active ? "Cast this source" : `Cast to ${state?.selectedName || "the device"}`;
-  $("cast-hint").textContent = !state ? "Open the companion on your Mac to cast." : !state.selected ? "Choose a destination in Settings first." : !page?.sources.length ? "Start the video on the page, then refresh here." : active && sourceChanged ? "The new source will replace the current cast." : "";
+  $("cast-hint").textContent = !state ? "Open the companion on your Mac to cast." : !state.selected ? "Choose a destination in Settings first." : !page?.sources.length ? "" : active && sourceChanged ? "The new source will replace the current cast." : "";
   $("player-label").dataset.active = String(active);
   $("pause-glyph").toggleAttribute('hidden', !!state?.paused);
   $("play-glyph").toggleAttribute('hidden', !state?.paused);
@@ -198,11 +201,11 @@ function renderPlayer() {
 async function action(task) {
   if (busy) return;
   busy = true; error(); renderPlayer();
-  for (const id of ["scan", "pair", "device", "save-device"]) $(id).disabled = true;
+  for (const id of ["scan", "pair", "device-list", "save-device"]) $(id).disabled = true;
   try { await task(); } catch (err) { error(err.message); }
   finally {
     busy = false;
-    for (const id of ["scan", "pair", "device", "save-device"]) $(id).disabled = false;
+    for (const id of ["scan", "pair", "device-list", "save-device"]) $(id).disabled = false;
     renderPlayer();
   }
 }
@@ -211,26 +214,46 @@ function renderState(value) {
   $("connection-label").textContent = value.casting ? "Connected to device" : "Companion ready";
   $("connection-label").title = value.message || "";
   $("connection").className = value.casting ? "active" : "ready";
-  $("room").textContent = value.selectedName || "Choose a device";
+  const protocol = value.selectedProtocol === "dlna" ? "DLNA" : "AirPlay";
+  $("destination-protocol-icon").setAttribute("href", protocol === "DLNA" ? "#dlna-icon" : "#airplay");
+  $("room").textContent = value.selectedName ? `${value.selectedName} · ${protocol}` : "Choose a device";
   $("destination").setAttribute("aria-label", `Destination : ${value.selectedName || "none"}. Open settings`);
   const devices = value.devices || [];
   const previousDevice = $("device").value;
-  const choices = [...devices].sort((a,b) => Number(a.protocol === "dlna") - Number(b.protocol === "dlna")).map(d => ({label: `${d.name} · ${d.protocol === "dlna" ? "DLNA" : "AirPlay"}`, value: d.id, disabled: d.canCast === false}));
-  if (value.selected && !devices.some(d => d.id === value.selected)) choices.unshift({label: value.selectedName || "Apple TV favorite", value: value.selected});
-  if (!value.selected) choices.unshift({label: "Choose a device", value: ""});
-  const fingerprint = JSON.stringify(choices);
-  if ($("device").dataset.choices !== fingerprint) {
-    $("device").replaceChildren(...choices.map(d => { const option = new Option(d.label, d.value); option.disabled = !!d.disabled; return option; }));
-    $("device").dataset.choices = fingerprint;
-    if (deviceDirty && choices.some(d => d.value === previousDevice)) $("device").value = previousDevice;
-    else deviceDirty = false;
+  const choices = [...devices].sort((a,b) => Number(a.protocol === "dlna") - Number(b.protocol === "dlna"));
+  if (value.selected && !devices.some(d => d.id === value.selected)) {
+    choices.unshift({id:value.selected, name:value.selectedName || "Saved device", protocol:value.selectedProtocol});
   }
-  if (!deviceDirty) $("device").value = value.selected || "";
+  if (deviceDirty && !choices.some(d => d.id === previousDevice && d.canCast !== false)) deviceDirty = false;
+  $("device").value = deviceDirty ? previousDevice : value.selected || "";
+  const fingerprint = JSON.stringify(choices.map(d => [d.id, d.name, d.protocol, d.canCast]));
+  const rows = $("device-rows");
+  if (rows.dataset.choices !== fingerprint) {
+    rows.replaceChildren();
+    for (const device of choices) {
+      const dlna = device.protocol === "dlna";
+      const label = document.createElement("label");
+      label.className = "device-row";
+      label.innerHTML = '<input type="radio" name="destination-device"><svg aria-hidden="true"><use></use></svg><span class="device-name"></span><span class="device-protocol"></span>';
+      const input = label.querySelector("input");
+      input.value = device.id;
+      input.disabled = device.canCast === false;
+      label.querySelector("use").setAttribute("href", dlna ? "#dlna-icon" : "#airplay");
+      label.querySelector(".device-name").textContent = device.name;
+      label.querySelector(".device-protocol").textContent = dlna ? "DLNA" : "AirPlay";
+      rows.append(label);
+    }
+    if (!choices.length) rows.textContent = "Search for devices to choose a destination.";
+    rows.dataset.choices = fingerprint;
+  }
+  for (const input of rows.querySelectorAll("input")) input.checked = input.value === $("device").value;
   $("device-saved").textContent = deviceDirty ? "Unsaved" : value.selected ? "Saved" : "Set up required";
   $("save-device").querySelector("span").textContent = value.casting && deviceDirty ? "Change destination" : "Save as default";
   $("device-hint").textContent = value.casting && deviceDirty ? "Changing the destination will stop the current cast." : value.selected ? "Saved for future casts, including the keyboard shortcut." : "Choose a device and save it for future casts.";
   const dlnaCount = devices.filter(d => d.protocol === "dlna").length;
-  $("discovery-hint").textContent = [value.discoveryWarning, dlnaCount ? `${dlnaCount} DLNA device(s) available. Formats and controls depend on the TV.` : "Search includes AirPlay and DLNA receivers on the local network."].filter(Boolean).join(" ");
+  $("airplay-discovery").textContent = `AirPlay · ${devices.length - dlnaCount}`;
+  $("dlna-discovery").textContent = `DLNA · ${dlnaCount}`;
+  $("discovery-hint").textContent = value.discoveryWarning || "";
   const selected = devices.find(d => d.id === value.selected);
   const paired = value.selectedPaired ?? selected?.paired;
   $("pair").textContent = paired ? "Pair again…" : "Pair this Apple TV";
@@ -240,12 +263,22 @@ function renderState(value) {
   $("forget").hidden = !paired || value.selectedProtocol === "dlna";
   if (forgetId && (forgetId !== value.selected || deviceDirty || !paired)) { forgetId = null; $("forget-confirm").hidden = true; }
   $("pair").disabled = busy || !value.selected || deviceDirty;
-  if (!configured) { if (!value.selected) showTab("settings"); configured = true; }
+  if (!configured) { if (!value.selected) $("destination-picker").open = true; configured = true; }
   $("playback-warning").textContent = value.playbackWarning || "";
   $("playback-warning").hidden = !value.playbackWarning;
   if (value.error) error(value.error);
   renderPlayer();
 }
+let defaultSubtitleLanguage = "off";
+let subtitleEdited = false;
+
+function applySubtitlePreference() {
+  if (!page) return;
+  const selection = preferredSubtitle(page.subtitles, defaultSubtitleLanguage);
+  $("subtitle-language").value = typeof selection === "number" ? subtitleLanguage(page.subtitles[selection]) : selection;
+  renderSubtitleTracks(typeof selection === "number" ? String(selection) : null);
+}
+
 function renderPage(value) {
   const previousSource = $("source").value, previousSubtitle = $("subtitle").value;
   const previousTrack = /^\d+$/.test(previousSubtitle) ? page?.subtitles[Number(previousSubtitle)] : null;
@@ -256,20 +289,26 @@ function renderPage(value) {
   $("source-count").textContent = `${value.sources.length} ${value.sources.length > 1 ? "sources" : "source"}`;
   if (value.sources.some(s => s.url === previousSource)) $("source").value = previousSource;
   subtitleGroups = groupSubtitles(value.subtitles);
-  $("subtitle-language").replaceChildren(new Option("Automatic · active track or French", "auto"), new Option("Off", "off"), ...subtitleGroups.map(g => new Option(`${g.label.charAt(0).toUpperCase() + g.label.slice(1)} · ${g.tracks.length}`,g.key)));
+  $("subtitle-language").replaceChildren(new Option("Off", "off"), new Option("Automatic · active track or French", "auto"), ...subtitleGroups.map(g => new Option(`${g.label.charAt(0).toUpperCase() + g.label.slice(1)} · ${g.tracks.length}`,g.key)));
   if ([...$("subtitle-language").options].some(o => o.value === previousLanguage)) $("subtitle-language").value = previousLanguage;
   const sameTrack = previousTrack ? value.subtitles.findIndex(t => previousTrack.url ? t.url === previousTrack.url : t.content === previousTrack.content && t.label === previousTrack.label) : -1;
   if (sameTrack < 0 && previousLanguage === "auto" && value.recommendedSubtitle != null) {
     const recommended = subtitleGroups.find(g => g.tracks.some(t => t.index === value.recommendedSubtitle));
     if (recommended) $("subtitle-language").value = recommended.key;
   }
-  renderSubtitleTracks(sameTrack >= 0 ? String(sameTrack) : value.recommendedSubtitle != null ? String(value.recommendedSubtitle) : null);
+  if (subtitleEdited) renderSubtitleTracks(sameTrack >= 0 ? String(sameTrack) : value.recommendedSubtitle != null ? String(value.recommendedSubtitle) : null);
+  else applySubtitlePreference();
   renderSourceHint();
   seedOpenSubtitles(value.title);
   renderPlayer();
 }
 function subtitleHint() {
-  if ($("subtitle-language").value === "off") return "Subtitles will be off for the next cast.";
+  if ($("subtitle-language").value === "off") {
+    const preferred = subtitleLanguageOptions.find(option => option.code === defaultSubtitleLanguage);
+    return !subtitleEdited && preferred
+      ? `No ${preferred.label} track found. Subtitles will be off for the next cast.`
+      : "Subtitles will be off for the next cast.";
+  }
   if (!subtitleGroups.length) return "No external tracks detected. Embedded tracks remain available on Apple TV.";
   const group = subtitleGroups.find(g => g.key === $("subtitle-language").value);
   return group ? `${group.tracks.length} tracks will be available using the remote. The selected track will be enabled for the next cast.` : "Uses the active page track, or French as a fallback. All tracks in that language will be available on Apple TV.";
@@ -284,42 +323,43 @@ function renderSubtitleTracks(previous = null) {
     $("subtitle").value = String(selected.index);
   } else $("subtitle").replaceChildren(new Option(language === "off" ? "Off" : "Automatic", language === "off" ? "off" : "auto"));
 }
-$("subtitle-language").addEventListener("change", () => { renderSubtitleTracks(); if (!state?.casting) syncSession = null; availability(); });
+$("subtitle").addEventListener("change", () => { subtitleEdited = true; sourceChanged = true; renderPlayer(); });
+$("subtitle-language").addEventListener("change", () => { subtitleEdited = true; sourceChanged = true; renderSubtitleTracks(); if (!state?.casting) syncSession = null; renderPlayer(); });
 function showTab(name) {
   document.scrollingElement.scrollTop = 0;
-  for (const tab of ["player", "subtitles", "settings"]) {
+  for (const tab of ["player", "settings"]) {
     const selected = tab === name;
     $("tab-" + tab).setAttribute("aria-selected", String(selected));
     $("tab-" + tab).tabIndex = selected ? 0 : -1;
     $("panel-" + tab).hidden = !selected;
   }
 }
-for (const name of ["player", "subtitles", "settings"]) {
+for (const name of ["player", "settings"]) {
   $("tab-" + name).addEventListener("click", () => showTab(name));
   $("tab-" + name).addEventListener("keydown", event => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const tabs = ["player", "subtitles", "settings"];
-    const next = event.key === "Home" ? "player" : event.key === "End" ? "settings" : tabs[(tabs.indexOf(name) + (event.key === "ArrowRight" ? 1 : 2)) % tabs.length];
+    const tabs = ["player", "settings"];
+    const next = event.key === "Home" ? "player" : event.key === "End" ? "settings" : tabs[(tabs.indexOf(name) + 1) % tabs.length];
     showTab(next); $("tab-" + next).focus();
   });
 }
-$("destination").addEventListener("click", () => { showTab("settings"); $("device").focus(); });
-$("subtitle-shortcut").addEventListener("click", () => showTab("subtitles"));
-function renderSubtitleSummary() {
-  const language = $("subtitle-language").value;
-  const group = subtitleGroups.find(g => g.key === language);
-  const dlna = state?.selectedProtocol === "dlna";
-  $("subtitle-summary").textContent = dlna ? "On the TV" : language === "off" ? "Off" : group ? `${group.label.charAt(0).toUpperCase() + group.label.slice(1)} · ${group.tracks.length} track${group.tracks.length > 1 ? "s" : ""}` : "Automatic";
-  const count = state?.casting ? state.subtitleTracks?.length || 0 : page?.subtitles.length || 0;
-  $("subtitle-count").textContent = count;
-  $("subtitle-count").hidden = count === 0;
-}
+$("destination-picker").addEventListener("toggle", () => {
+  $("destination").setAttribute("aria-expanded", String($("destination-picker").open));
+});
+$("destination").addEventListener("click", () => {
+  const wasOnPlayback = !$("panel-player").hidden;
+  showTab("player");
+  const picker = $("destination-picker");
+  picker.open = !wasOnPlayback || !picker.open;
+  if (picker.open) ($("device-rows").querySelector("input:checked, input:not(:disabled)") || $("scan")).focus();
+});
 function renderSourceHint() {
   const details = page?.sources.find(s => s.url === $("source").value)?.details || "";
   $("source-hint").textContent = details;
   $("source-hint").closest("details").hidden = !details;
 }
+$("dlna-subtitle-mode").addEventListener("change", () => { sourceChanged = true; renderPlayer(); });
 $("source").addEventListener("change", () => { sourceChanged = true; renderSourceHint(); renderPlayer(); });
 async function refresh() {
   if (refreshing) return;
@@ -356,13 +396,24 @@ $("forward").addEventListener("click", () => seek((state?.position || 0) + 10));
 $("refresh").addEventListener("click", () => action(refresh));
 $("scan").addEventListener("click", () => action(async () => {
   $("scan").querySelector("span").textContent = "Searching the network…";
+  $("discovery-protocols").classList.add("scanning");
+  $("discovery-hint").textContent = "Searching for AirPlay and DLNA devices…";
   try { renderState(await send({action: "scan"})); }
-  finally { $("scan").querySelector("span").textContent = "Search for devices"; }
+  finally {
+    $("scan").querySelector("span").textContent = "Search for devices";
+    $("discovery-protocols").classList.remove("scanning");
+    if ($("discovery-hint").textContent === "Searching for AirPlay and DLNA devices…") $("discovery-hint").textContent = "";
+  }
 }));
-$("device").addEventListener("change", () => { deviceDirty = $("device").value !== state?.selected; if (state) renderState(state); else availability(); });
+$("device-rows").addEventListener("change", event => {
+  $("device").value = event.target.value;
+  deviceDirty = $("device").value !== state?.selected;
+  if (state) renderState(state);
+});
 $("save-device").addEventListener("click", () => action(async () => {
   const value = await send({action: "select", id: $("device").value});
   deviceDirty = false; renderState(value);
+  if (value.selectedProtocol === "dlna" || value.selectedPaired) $("destination-picker").open = false;
 }));
 $("forget").addEventListener("click", () => {
   forgetId = state.selected;
@@ -389,7 +440,7 @@ $("cancel-pair").addEventListener("click", () => action(async () => { await send
 $("cast").addEventListener("click", () => action(async () => {
   $("cast").querySelector("span").textContent = "Preparing…";
   const selection = $("subtitle").value;
-  const result = await send({action: "cast", tabId, url: $("source").value, subtitle: /^\d+$/.test(selection) ? Number(selection) : selection, subtitleOffset: state?.casting || state?.selectedProtocol === "dlna" ? 0 : Number($("sync-offset").value) || 0});
+  const result = await send({action: "cast", tabId, url: $("source").value, subtitle: /^\d+$/.test(selection) ? Number(selection) : selection, dlnaSubtitleMode: $("dlna-subtitle-mode").value, subtitleOffset: state?.casting || state?.selectedProtocol === "dlna" ? 0 : Number($("sync-offset").value) || 0});
   sourceChanged = false;
   renderState(result);
 }));
@@ -412,6 +463,81 @@ $("stop").addEventListener("click", () => action(async () => {
   showTab("player");
   await refresh();
 }));
+function applyTheme(value) {
+  const theme = value === "light" || value === "dark" ? value : "system";
+  document.documentElement.dataset.theme = theme;
+  $("theme-picker").querySelector(`[value="${theme}"]`).checked = true;
+}
+
+$("theme-picker").addEventListener("change", async event => {
+  const previous = document.documentElement.dataset.theme;
+  applyTheme(event.target.value);
+  try {
+    await chrome.storage.local.set({theme: event.target.value});
+    $("theme-status").textContent = "";
+  } catch {
+    applyTheme(previous);
+    $("theme-status").textContent = "Could not save your theme.";
+  }
+});
+
+const defaultSubtitleSelect = $("default-subtitle-language");
+defaultSubtitleSelect.append(new Option("Automatic · active track or French", "auto"),
+  ...subtitleLanguageOptions.map(({code, label}) => new Option(label, code)));
+
+try {
+  const {theme, defaultSubtitleLanguage: saved} = await chrome.storage.local.get(["theme", "defaultSubtitleLanguage"]);
+  applyTheme(theme);
+  if ([...defaultSubtitleSelect.options].some(option => option.value === saved)) {
+    defaultSubtitleSelect.value = defaultSubtitleLanguage = saved;
+  }
+} catch {
+  $("default-subtitle-status").textContent = "Could not load the subtitle preference.";
+}
+
+defaultSubtitleSelect.addEventListener("change", async () => {
+  const language = defaultSubtitleSelect.value;
+  defaultSubtitleSelect.disabled = true;
+  try {
+    await chrome.storage.local.set({defaultSubtitleLanguage: language});
+    defaultSubtitleLanguage = language;
+    subtitleEdited = false;
+    applySubtitlePreference();
+    if (state?.casting) sourceChanged = true;
+    renderPlayer();
+    $("default-subtitle-status").textContent = "Saved for the next cast.";
+  } catch {
+    defaultSubtitleSelect.value = defaultSubtitleLanguage;
+    $("default-subtitle-status").textContent = "Could not save the subtitle preference.";
+  } finally {
+    defaultSubtitleSelect.disabled = false;
+  }
+});
+
+const extensionVersion = chrome.runtime.getManifest().version;
+$("extension-version").textContent = extensionVersion;
+$("check-updates").addEventListener("click", async () => {
+  $("check-updates").disabled = true;
+  $("update-release").hidden = true;
+  $("update-status").textContent = "Checking GitHub…";
+  try {
+    const response = await fetch("https://api.github.com/repos/IndieFear/airplay-flixer/releases/latest", {
+      credentials: "omit", signal: AbortSignal.timeout(12000)
+    });
+    if (!response.ok) throw new Error();
+    const {tag_name: tag} = await response.json();
+    if (!/^v?\d+\.\d+\.\d+$/.test(tag)) throw new Error();
+    const latest = tag.replace(/^v/, "");
+    const available = latest.localeCompare(extensionVersion, "en", {numeric: true}) > 0;
+    $("update-status").textContent = available ? `Version ${latest} is available.` : `Extension is up to date · ${extensionVersion}`;
+    $("update-release").hidden = !available;
+  } catch {
+    $("update-status").textContent = "Could not check GitHub. Try again later.";
+  } finally {
+    $("check-updates").disabled = false;
+  }
+});
+
 const [active] = await chrome.tabs.query({active: true, currentWindow: true});
 tabId = active?.id;
 await refresh();
@@ -463,7 +589,12 @@ async function osAction(task) {
 }
 $("os-query").addEventListener("input",()=>{osQueryDirty=true;});
 $("os-type").addEventListener("change",()=>{$("os-episode-fields").hidden=$("os-type").value!=="episode";});
-$("os-setup").addEventListener("click",()=>{showTab("settings"); ($("subtitle-provider").value === "subdl" ? $("sd-key") : $("os-key")).focus();});
+$("os-setup").addEventListener("click", () => {
+  const provider = $("subtitle-provider").value === "subdl" ? "sd" : "os";
+  showTab("settings");
+  $(provider + "-account-card").open = true;
+  $(provider + "-key").focus();
+});
 $("os-config-form").addEventListener("submit",event=>{
   event.preventDefault();
   osAction(async()=>{
@@ -498,13 +629,15 @@ function renderOsResults(result) {
       $("os-message").textContent="Downloading track…";
       const session=state?.subtitleSession;
       const result=await send({action:provider === "subdl" ? "sd_download" : "os_download",tabId,fileId:track.fileId});
+      subtitleEdited = true;
       renderPage(result.page);
-      $("subtitle-language").value=result.track.language;
+      $("subtitle-language").value=subtitleLanguage(result.track);
+      sourceChanged = true;
       renderSubtitleTracks(String(result.page.subtitles.findIndex(t=>t.provider===provider && t.fileId===track.fileId)));
       osChosen={id:result.id,session,provider};
       $("os-chosen-label").textContent=`Ready ${result.track.label}`;
       $("os-message").textContent="Track downloaded and selected."+(result.remaining!=null ? ` Reported remaining quota ${result.remaining}.` : "");
-      availability();
+      renderPlayer();
       $("os-chosen").scrollIntoView({block:"nearest"});
     }));
     card.append(title,release,info,button);$("os-results").append(card);

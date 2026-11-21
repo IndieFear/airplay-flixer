@@ -25,7 +25,8 @@ from urllib.parse import urlsplit
 
 from .opensubtitles import OpenSubtitles
 from .subdl import SubDL
-from .video_download import VideoDownload
+from .video_download import VideoDownload, to_srt
+from .subtitle_offset import shift_cues
 from .power import SleepGuard
 from . import VERSION
 from .config import data_directory, read_json, write_json
@@ -151,7 +152,7 @@ class Companion:
     def status(self):
         selected = self.settings.get('selected')
         return {
-            'version': VERSION, 'message': self.message, 'error': self.error,
+            'dlnaExternalSubtitles': True, 'dlnaAutomaticSubtitles': True, 'version': VERSION, 'message': self.message, 'error': self.error,
             'discoveryWarning': self.discovery_warning,
             'playbackWarning': self.playback_warning, 'selectedProtocol': self.settings.get('selectedProtocol', 'airplay'),
             'pauseable': self.dlna.pauseable if self.dlna else True,
@@ -351,37 +352,75 @@ class Companion:
             self.local_ip = route.getsockname()[0]
         finally:
             route.close()
-        # Generic DLNA does not define interoperable external subtitle loading.
-        # Keep native tracks in the stream and explain the external-track limit.
         subtitle = payload.get('subtitle')
-        if subtitle and not subtitle.get('off'):
-            self.playback_warning = 'DLNA does not transmit the selected external subtitles. Use embedded tracks on the TV.'
-        if subtitle and subtitle.get('off'):
-            self.playback_warning = 'DLNA. Turn off embedded subtitles in the TV player if needed.'
+        mode = payload.get('dlnaSubtitleMode', 'auto')
         self.media = MediaSession(self.client, {**payload, 'subtitle': None, 'subtitles': [], 'targetProtocol': 'dlna'}, f'http://{self.local_ip}:{self.media_port}')
         self.dlna = DlnaPlayer(self.client, device)
         try:
+            caption = None
+            burn = bool(subtitle and not subtitle.get('off') and mode == 'burn')
+            if subtitle and not subtitle.get('off'):
+                try:
+                    text = await self.media.subtitle_text(subtitle)
+                    self.media.dlna_srt = to_srt(text)
+                except (ValueError, aiohttp.ClientError, TimeoutError):
+                    if burn:
+                        raise ValueError('Cannot load the selected subtitle track for burn-in.') from None
+                    self.playback_warning = 'The selected subtitle track could not be loaded.'
+                else:
+                    if not burn:
+                        caption = f'{self.media.base}/captions.srt'
+                        self.media.dlna_caption = caption
+                        self.playback_warning = 'External subtitles are available if your TV supports them.'
             loopback = f'http://127.0.0.1:{self.media_port}'
             formats = await self.dlna.formats()
             hls = self.media.kind == 'hls' or '.m3u8' in urlsplit(self.media.source).path.lower()
-            compatible = hls and bool(formats) and not formats.intersection({'application/vnd.apple.mpegurl', 'application/x-mpegurl', 'audio/mpegurl', 'audio/x-mpegurl'})
+            compatible = burn or hls and bool(formats) and not formats.intersection({'application/vnd.apple.mpegurl', 'application/x-mpegurl', 'audio/mpegurl', 'audio/x-mpegurl'})
             ts_mime = 'video/mp2t' if 'video/mp2t' in formats else 'video/vnd.dlna.mpeg-tts' if 'video/vnd.dlna.mpeg-tts' in formats else 'video/mpeg' if 'video/mpeg' in formats else 'video/mp2t'
+            async def prepare_burn(at):
+                if at:
+                    self.media.dlna_srt = to_srt(
+                        shift_cues(to_webvtt(self.media.dlna_srt, 0), -round(at * 1000)),
+                        allow_empty=True,
+                    )
+                return await self.media.prepare_dlna_compatible(loopback, ts_mime, at, burn_subtitles=True)
+
+            async def load_burn(at):
+                media = self.media
+                media.dlna_caption = None
+                self.playback_warning = 'Switching to burned-in subtitles…'
+                self.timeline.update(position=at, state='loading')
+                self.confirmed = False
+                with contextlib.suppress(DlnaError):
+                    await self.dlna.command('Stop')
+                await media.close()
+                media.error = None
+                burn_url = await prepare_burn(at) + '?subtitles=burn'
+                await self.dlna.load(burn_url, self.title, ts_mime, max(0, media.duration - at))
+                self.playback_url = burn_url
+                self.playback_warning = 'Subtitles are burned into the video. Seeking is unavailable during this cast.'
+
+            fallback = load_burn if caption and mode == 'auto' else None
             if compatible:
-                url = await self.media.prepare_dlna_compatible(loopback, ts_mime, position)
+                url = await (prepare_burn(position) if burn else self.media.prepare_dlna_compatible(loopback, ts_mime, position))
                 mime = ts_mime
             else:
                 url = await self.media.prepare(loopback)
                 mime = 'application/vnd.apple.mpegurl' if url.endswith('.m3u8') else {'mp4': 'video/mp4', 'mkv': 'video/x-matroska', 'webm': 'video/webm'}.get(self.media.kind, 'video/mp4')
             try:
-                await self.dlna.load(url, self.title, mime, max(0, self.media.duration - (position if compatible else 0)))
+                await self.dlna.load(url, self.title, mime, max(0, self.media.duration - (position if compatible else 0)), **({"subtitle_url": caption} if caption else {}))
             except DlnaError as error:
-                if not hls or compatible or error.code not in {'704', '714'}:
+                if error.code not in {'704', '714'}:
                     raise
-                # Some receivers advertise generic support yet reject playlists.
-                compatible = True
-                url = await self.media.prepare_dlna_compatible(loopback, ts_mime, position)
-                mime = ts_mime
-                await self.dlna.load(url, self.title, mime, max(0, self.media.duration - position))
+                if fallback:
+                    await fallback(position)
+                    url, compatible, fallback = self.playback_url, True, None
+                elif hls and not compatible:
+                    compatible = True
+                    url = await self.media.prepare_dlna_compatible(loopback, ts_mime, position)
+                    await self.dlna.load(url, self.title, ts_mime, max(0, self.media.duration - position), **({"subtitle_url": caption} if caption else {}))
+                else:
+                    raise
             if compatible:
                 height = self.media.compat_info.get('height')
                 quality = f' {height}p' if height else ''
@@ -389,17 +428,18 @@ class Companion:
                 self.playback_warning = notice + (' ' + self.playback_warning if self.playback_warning else '')
             self.playback_url = url
             self.timeline.update(position=position if compatible else 0, duration=self.media.duration, state='loading')
-            self.play_task = asyncio.create_task(self.protected_playback(self.monitor_dlna, 0 if compatible else position))
+            self.play_task = asyncio.create_task(self.protected_playback(self.monitor_dlna, 0 if compatible else position, fallback))
             self.message = 'Loading on ' + device['name']
             return self.status()
         except BaseException:
             await self.stop()
             raise
 
-    async def monitor_dlna(self, initial_position=0):
+    async def monitor_dlna(self, initial_position=0, fallback=None):
         player = self.dlna
         started = time.monotonic()
         failures = 0
+        playing_since = None
         try:
             while self.dlna is player:
                 try:
@@ -434,10 +474,35 @@ class Companion:
                         self.timeline.update(position=remote_position + offset if remote_position is not None else None, duration=remote_duration + offset if remote_duration else None)
                     except ValueError:
                         pass
+                    if fallback and remote_state == 'PLAYING':
+                        playing_since = playing_since or time.monotonic()
+                        if self.media.dlna_caption_requested:
+                            fallback = None
+                        elif time.monotonic() - playing_since >= 12:
+                            restart, fallback = fallback, None
+                            async with self.action_lock:
+                                if not self.media.dlna_caption_requested and self.timeline.state == 'playing':
+                                    await restart(self.timeline.snapshot()['position'])
+                                    started = time.monotonic()
+                                elif not self.media.dlna_caption_requested:
+                                    fallback = restart
+                                    playing_since = None
+                    else:
+                        playing_since = None
                     failures = 0
                 except ValueError as error:
                     failures += 1
                     if failures >= 3:
+                        if fallback and not self.confirmed:
+                            restart, fallback = fallback, None
+                            try:
+                                async with self.action_lock:
+                                    await restart(initial_position or self.media.compat_offset)
+                                initial_position = failures = 0
+                                started = time.monotonic()
+                                continue
+                            except (ValueError, OSError, aiohttp.ClientError, TimeoutError) as restart_error:
+                                error = restart_error
                         self.error = str(error)
                         self.message = 'DLNA playback interrupted'
                         break
@@ -778,6 +843,13 @@ class Companion:
         if request.remote == self.settings.get('address') and request.method == 'GET':
             self.received.set()
         try:
+            if request.match_info['tail'] == 'captions.srt' and getattr(self.media, 'dlna_caption', None):
+                text = self.media.dlna_srt
+                if self.media.compat_offset:
+                    text = to_srt(shift_cues(to_webvtt(text, 0), -round(self.media.compat_offset * 1000)), allow_empty=True)
+                if request.method == 'GET' and request.remote == self.settings.get('address'):
+                    self.media.dlna_caption_requested = True
+                return web.Response(text=text, content_type='text/srt')
             return await self.media.serve(request)
         except ValueError as error:
             if request.remote not in {'127.0.0.1','::1'}:
@@ -805,6 +877,9 @@ async def serve():
     media.router.add_get('/media/{session}/{tail:.*}', companion.relay)
     async def dlna_headers(request, response):
         if companion.dlna:
+            caption = getattr(companion.media, 'dlna_caption', None)
+            if caption and request.match_info.get('session') == companion.media.id and request.match_info.get('tail') != 'captions.srt' and 200 <= response.status < 300:
+                response.headers['CaptionInfo.sec'] = caption
             response.headers['transferMode.dlna.org'] = 'Streaming'
             if request.headers.get('getcontentFeatures.dlna.org') == '1':
                 byte_seek = response.headers.get('Accept-Ranges', '').lower() == 'bytes'

@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var timer: Timer?
     private var state: [String: Any] = [:]
     private var busy = false
+    private var discoverySpinner: NSProgressIndicator?
     private var polling = false
     private var menuOpen = false
     private var playbackPanel: PlaybackPanel?
@@ -145,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let name = device["name"] as? String ?? "Device"
             let dlna = device["protocol"] as? String == "dlna"
             let entry = menuItem(name + (dlna ? " · DLNA" : " · AirPlay"), #selector(selectDevice(_:)))
+            entry.image = NSImage(systemSymbolName: dlna ? "network" : "airplay.video", accessibilityDescription: dlna ? "DLNA" : "AirPlay")
             entry.isEnabled = !busy
             entry.representedObject = device["id"]
             entry.state = device["id"] as? String == state["selected"] as? String ? .on : .off
@@ -152,6 +154,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         submenu.addItem(.separator())
         submenu.addItem(menuItem("Search AirPlay and DLNA…", #selector(scan)))
+        if state["selected"] != nil {
+            let dlna = state["selectedProtocol"] as? String == "dlna"
+            devices.image = NSImage(systemSymbolName: dlna ? "network" : "airplay.video", accessibilityDescription: dlna ? "DLNA" : "AirPlay")
+        }
         devices.submenu = submenu
         menu.addItem(devices)
         let pair = menuItem("Pair Apple TV…", #selector(pairTV))
@@ -165,6 +171,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(menuItem("Install Chrome extension…", #selector(showExtension)))
         menu.addItem(menuItem("View log", #selector(showLog)))
+        menu.addItem(menuItem("About Airplay Flixer…", #selector(showAbout)))
+        menu.addItem(menuItem("Check for Updates…", #selector(checkUpdates)))
         menu.addItem(.separator())
         let quit = menuItem("Quit Airplay Flixer", #selector(quitApp))
         quit.keyEquivalent = "q"
@@ -185,6 +193,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
         rpc(command) { result in
             self.busy = false
+            if command["action"] as? String == "scan" {
+                self.discoverySpinner?.stopAnimation(nil)
+                self.discoverySpinner?.removeFromSuperview()
+                self.discoverySpinner = nil
+                self.item.button?.image = NSImage(systemSymbolName: "airplay.video", accessibilityDescription: "Airplay Flixer")
+                self.item.button?.image?.isTemplate = true
+                self.item.button?.toolTip = "Airplay Flixer"
+            }
             self.playbackPanel?.update(self.state, busy: false)
             switch result {
             case .success(let value):
@@ -197,7 +213,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func scan() { perform(["action": "scan"]) }
+    @objc private func scan() {
+        guard !busy else { return }
+        if let button = item.button {
+            let spinner = NSProgressIndicator(frame: NSRect(x: button.bounds.midX - 7, y: button.bounds.midY - 7, width: 14, height: 14))
+            spinner.style = .spinning
+            spinner.controlSize = .small
+            spinner.setAccessibilityLabel("Searching for AirPlay and DLNA devices")
+            button.image = nil
+            button.toolTip = "Searching for AirPlay and DLNA devices…"
+            button.addSubview(spinner)
+            spinner.startAnimation(nil)
+            discoverySpinner = spinner
+        }
+        perform(["action": "scan"])
+    }
     @objc private func selectDevice(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         perform(["action": "select", "id": id])
@@ -252,6 +282,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try? process.run()
         }
     }
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+    }
+
+    @objc private func showAbout() {
+        var details = "Version " + appVersion
+        if let engineVersion = state["version"] as? String {
+            details += "\nCompanion engine " + engineVersion
+        }
+        showUpdateDialog(title: "About Airplay Flixer", details: details, showRelease: false)
+    }
+
+    @objc private func checkUpdates() {
+        guard let url = URL(string: "https://api.github.com/repos/IndieFear/airplay-flixer/releases/latest") else { return }
+        var request = URLRequest(url: url, timeoutInterval: 12)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard (response as? HTTPURLResponse)?.statusCode == 200,
+                      let data, let release = try? JSONDecoder().decode(GitHubRelease.self, from: data),
+                      release.tag_name.range(of: #"^v?[0-9]+\.[0-9]+\.[0-9]+$"#, options: .regularExpression) != nil else {
+                    self.showUpdateDialog(title: "Update check failed", details: "Could not check GitHub. Try again later.", showRelease: false)
+                    return
+                }
+                let latest = String(release.tag_name.dropFirst(release.tag_name.hasPrefix("v") ? 1 : 0))
+                let available = latest.compare(self.appVersion, options: .numeric) == .orderedDescending
+                self.showUpdateDialog(
+                    title: available ? "Update available" : "Airplay Flixer is up to date",
+                    details: "Installed: \(self.appVersion)\nLatest release: \(latest)",
+                    showRelease: available
+                )
+            }
+        }.resume()
+    }
+
+    private struct GitHubRelease: Decodable {
+        let tag_name: String
+    }
+
+    private func showUpdateDialog(title: String, details: String, showRelease: Bool) {
+        NSApp.activate(ignoringOtherApps: true)
+        let dialog = NSAlert()
+        dialog.messageText = title
+        dialog.informativeText = details
+        if showRelease { dialog.addButton(withTitle: "Open GitHub Release") }
+        dialog.addButton(withTitle: "Close")
+        if dialog.runModal() == .alertFirstButtonReturn, showRelease,
+           let url = URL(string: "https://github.com/IndieFear/airplay-flixer/releases/latest") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @objc private func showLog() { NSWorkspace.shared.open(folder.appendingPathComponent("companion.log")) }
     @objc private func quitApp() { NSApp.terminate(nil) }
     private func alert(_ message: String) {

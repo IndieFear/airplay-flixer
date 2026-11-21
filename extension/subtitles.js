@@ -13,6 +13,17 @@ const aliases = {
 };
 const names = new Intl.DisplayNames(['en'], {type:'language'});
 const known = new Set(('fr en es de it pt nl ru ar ja ko zh da sv no fi pl ro tr cs hu el he id vi th uk bg hr sr sk sl et lv lt is fa bn ms sq my mn ka hy az eu ca gl af sw ta te hi ur ne si km lo').split(' '));
+export const subtitleLanguageOptions = [...known].map(code => ({
+  code, label: names.of(code)
+})).sort((a, b) => a.label.localeCompare(b.label, 'en'));
+
+export function preferredSubtitle(tracks, language) {
+  if (language === 'auto') return 'auto';
+  const matches = tracks.map((track, index) => ({track, index}))
+    .filter(({track}) => known.has(language) && subtitleLanguage(track) === language);
+  return (matches.find(({track}) => track.selected) || matches[0])?.index ?? 'off';
+}
+
 export function subtitleLanguage(track) {
   const declared = String(track.language || '').toLowerCase().replaceAll('_','-').split('-')[0];
   if (known.has(declared)) return declared;
